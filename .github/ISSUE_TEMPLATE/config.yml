@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Wiki
+    url: https://github.com/achedon12/haulback/wiki
+    about: Installation, usage, options and FAQ.
+  - name: Questions and ideas
+    url: https://github.com/achedon12/haulback/discussions
+    about: Ask a question or discuss an idea before opening an issue.

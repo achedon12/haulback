@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      # Minecraft, Fabric and mappings are bumped by hand with each game version
+      - dependency-name: "com.mojang:minecraft"
+      - dependency-name: "net.fabricmc:*"
+      - dependency-name: "net.fabricmc.fabric-api:*"

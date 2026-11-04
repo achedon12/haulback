@@ -27,9 +27,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Scenario de bout en bout dans un monde plat :
- * 1. recolte de 6 buches posees a 12 blocs, depot dans le coffre, retour au point A ;
- * 2. construction d'un plancher 3x3 a partir d'un .schem, en prenant les planches dans le coffre.
+ * End-to-end scenarios in a flat world:
+ * 1. gather 6 logs placed 12 blocks away, store them in the chest, return to point A;
+ * 2. build a 3x3 floor from a .schem, taking the planks from the chest.
  */
 public class HaulbackClientGameTest implements FabricClientGameTest {
 
@@ -47,8 +47,8 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 	private void run(ClientGameTestContext ctx) throws Exception {
 		try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
 			sp.getClientWorld().waitForChunksRender();
-			for (String cmd : List.of("difficulty peaceful", "gamemode survival @à", "time set day",
-					"give @à bread 16", "give @à iron_axe", "give @à iron_pickaxe")) {
+			for (String cmd : List.of("difficulty peaceful", "gamemode survival @a", "time set day",
+					"give @a bread 16", "give @a iron_axe", "give @a iron_pickaxe")) {
 				sp.getServer().runCommand(cmd);
 			}
 			ctx.waitTicks(20);
@@ -65,7 +65,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			});
 			ctx.waitTicks(20);
 
-			// --- 0. sans aucun outil : il doit fabriquer pioche, hache, epee avant de miner la pierre
+			// --- 0. no tools at all: it must craft a pickaxe, axe and sword before mining stone
 			sp.getServer().runCommand("clear @a");
 			sp.getServer().runCommand("give @a bread 16");
 			sp.getServer().runOnServer(s -> {
@@ -80,7 +80,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			ctx.waitTicks(10);
 			ctx.runOnClient(mc -> HaulbackConfig.get().setChest(chest));
 			ctx.runOnClient(mc -> Collector.get().start(
-					List.of(new Target("Pierre", new ItemStack(Items.STONE), Set.of(Blocks.STONE), 6)), null, null, null));
+					List.of(new Target("Stone", new ItemStack(Items.STONE), Set.of(Blocks.STONE), 6)), null, null, null));
 			ctx.waitTicks(200);
 			ctx.takeScreenshot("haulback-hud-outils");
 			ctx.waitFor(mc -> !Collector.get().active(), 20 * 240);
@@ -94,17 +94,17 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 				return sb.toString();
 			});
 			int cobble = sp.getServer().computeOnServer(s -> count(s, chest, Items.COBBLESTONE));
-			System.out.println("[HAULBACK-TEST] outils : statut=\"" + status0 + "\" pierre_dans_coffre=" + cobble + " inventaire=" + tools);
+			System.out.println("[HAULBACK-TEST] tools: status=\"" + status0 + "\" stone_in_chest=" + cobble + " inventory=" + tools);
 			boolean hasPick = ctx.computeOnClient(mc -> mc.player.getInventory().contains(st -> st.is(Items.STONE_PICKAXE)));
 			boolean hasAxe = ctx.computeOnClient(mc -> mc.player.getInventory().contains(st -> st.is(Items.STONE_AXE)));
 			boolean hasSword = ctx.computeOnClient(mc -> mc.player.getInventory().contains(st -> st.is(Items.STONE_SWORD)));
-			if (!hasPick || !hasAxe || !hasSword) throw new AssertionError("Outils non fabriqués : " + tools + " (statut : " + status0 + ")");
-			if (cobble < 6) throw new AssertionError("Seulement " + cobble + " pierres au coffre (statut : " + status0 + ")");
+			if (!hasPick || !hasAxe || !hasSword) throw new AssertionError("Tools not crafted: " + tools + " (status: " + status0 + ")");
+			if (cobble < 6) throw new AssertionError("Only " + cobble + " stone in the chest (status: " + status0 + ")");
 			sp.getServer().runOnServer(s -> {
 				if (s.overworld().getBlockEntity(chest) instanceof ChestBlockEntity c) c.clearContent();
 			});
 
-			// --- 1. recolte avec deux coffres, dont un contient deja 4 buches : il ne doit en couper que 2
+			// --- 1. gathering with two chests, one already holding 4 logs: it must cut only 2
 			BlockPos chest2 = home.offset(3, 0, -3);
 			sp.getServer().runOnServer(s -> {
 				s.overworld().setBlockAndUpdate(chest2, Blocks.CHEST.defaultBlockState());
@@ -134,21 +134,21 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			int needed = ctx.computeOnClient(mc -> Collector.get().targets().isEmpty() ? -1 : Collector.get().targets().get(0).needed);
 			int logs = sp.getServer().computeOnServer(s -> count(s, chest, Items.OAK_LOG) + count(s, chest2, Items.OAK_LOG));
 			int cut = logsBefore - sp.getServer().computeOnServer(s -> countLogs(s, home));
-			System.out.println("[HAULBACK-TEST] stock : objectif_apres_deduction=" + needed + " buches_coupees=" + cut);
-			if (needed != 2) throw new AssertionError("La deduction du stock n'a pas fonctionne : objectif " + needed + " au lieu de 2");
-			if (cut > 3) throw new AssertionError("Trop de buches coupees : " + cut);
+			System.out.println("[HAULBACK-TEST] stock: goal_after_deduction=" + needed + " logs_cut=" + cut);
+			if (needed != 2) throw new AssertionError("Stock deduction failed: goal " + needed + " instead of 2");
+			if (cut > 3) throw new AssertionError("Too many logs cut: " + cut);
 			double dist = sp.getServer().computeOnServer(s -> Math.sqrt(s.getPlayerList().getPlayers().get(0).blockPosition().distSqr(home)));
-			System.out.println("[HAULBACK-TEST] récolte : statut=\"" + status1 + "\" buches_dans_coffre=" + logs + " distance_point_A=" + dist);
-			if (logs < 6) throw new AssertionError("Les coffres ne contiennent que " + logs + " buches (statut : " + status1 + ")");
-			if (dist > 2) throw new AssertionError("Le bot n'est pas revenu au point A (distance " + dist + ")");
+			System.out.println("[HAULBACK-TEST] gathering: status=\"" + status1 + "\" logs_in_chests=" + logs + " distance_to_A=" + dist);
+			if (logs < 6) throw new AssertionError("The chests only hold " + logs + " logs (status: " + status1 + ")");
+			if (dist > 2) throw new AssertionError("The bot did not return to point A (distance " + dist + ")");
 
-			// --- 2. construction
+			// --- 2. building
 			File schem = ctx.computeOnClient(mc -> writeFloorSchematic(new File(mc.gameDirectory, "schematics/haulback_test.schem")));
 			SchematicReader.Result r = ctx.computeOnClient(mc -> SchematicReader.read(schem));
 			Materials.Plan plan = Materials.resolve(r.items(), Set.of());
-			System.out.println("[HAULBACK-TEST] schematic : " + r.items() + " -> cibles="
+			System.out.println("[HAULBACK-TEST] schematic: " + r.items() + " -> targets="
 					+ plan.targets.stream().map(t -> t.label + " x" + t.needed).toList()
-					+ " à_fabriquer=" + plan.toCraft.stream().map(l -> l.item() + " x" + l.count()).toList());
+					+ " to_craft=" + plan.toCraft.stream().map(l -> l.item() + " x" + l.count()).toList());
 			sp.getServer().runOnServer(s -> {
 				if (s.overworld().getBlockEntity(chest) instanceof ChestBlockEntity c) {
 					c.setItem(10, new ItemStack(Items.OAK_PLANKS, 16));
@@ -176,11 +176,11 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 				}
 				return n;
 			});
-			System.out.println("[HAULBACK-TEST] construction : statut=\"" + status2 + "\" planches_posees=" + placed + "/9");
+			System.out.println("[HAULBACK-TEST] build: status=\"" + status2 + "\" planks_placed=" + placed + "/9");
 			ctx.takeScreenshot("haulback-fin");
-			if (placed < 9) throw new AssertionError("Seulement " + placed + "/9 planches posees (statut : " + status2 + ")");
+			if (placed < 9) throw new AssertionError("Only " + placed + "/9 planks placed (status: " + status2 + ")");
 
-			// --- 2b. atelier : verre (cuisson) + escaliers (fabrication) a partir de matieres premieres
+			// --- 2b. workshop: glass (smelting) + stairs (crafting) from raw materials
 			ctx.runOnClient(mc -> {
 				HaulbackConfig.get().workshopTable = null;
 				HaulbackConfig.get().workshopFurnaces.clear();
@@ -216,10 +216,10 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 				}
 				return new int[]{glass, stairs};
 			});
-			System.out.println("[HAULBACK-TEST] atelier : statut=\"" + statusA + "\" verre=" + shopPlaced[0] + "/5 escaliers=" + shopPlaced[1] + "/4");
-			if (shopPlaced[0] < 5 || shopPlaced[1] < 4) throw new AssertionError("Atelier incomplet : verre " + shopPlaced[0] + "/5, escaliers " + shopPlaced[1] + "/4 (statut : " + statusA + ")");
+			System.out.println("[HAULBACK-TEST] workshop: status=\"" + statusA + "\" glass=" + shopPlaced[0] + "/5 stairs=" + shopPlaced[1] + "/4");
+			if (shopPlaced[0] < 5 || shopPlaced[1] < 4) throw new AssertionError("Workshop incomplete: glass " + shopPlaced[0] + "/5, stairs " + shopPlaced[1] + "/4 (status: " + statusA + ")");
 
-			// --- 2c. pioche en fer : on demande du diamant avec seulement des outils en pierre
+			// --- 2c. iron pickaxe: ask for diamond with only stone tools
 			sp.getServer().runOnServer(s -> {
 				ServerLevel lvl = s.overworld();
 				for (int i = 0; i < 4; i++) lvl.setBlockAndUpdate(home.offset(-10 + i, -1, -12), Blocks.IRON_ORE.defaultBlockState());
@@ -233,10 +233,10 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			String statusB = ctx.computeOnClient(mc -> Collector.get().status());
 			boolean ironPick = ctx.computeOnClient(mc -> mc.player.getInventory().contains(st -> st.is(Items.IRON_PICKAXE)));
 			int diamonds = sp.getServer().computeOnServer(s -> count(s, chest, Items.DIAMOND) + count(s, chest2, Items.DIAMOND));
-			System.out.println("[HAULBACK-TEST] fer : statut=\"" + statusB + "\" pioche_fer=" + ironPick + " diamants_au_coffre=" + diamonds);
-			if (!ironPick || diamonds < 1) throw new AssertionError("Chaine pioche en fer incomplete (statut : " + statusB + ")");
+			System.out.println("[HAULBACK-TEST] iron: status=\"" + statusB + "\" iron_pickaxe=" + ironPick + " diamonds_in_chest=" + diamonds);
+			if (!ironPick || diamonds < 1) throw new AssertionError("Iron pickaxe chain incomplete (status: " + statusB + ")");
 
-			// --- 3. combat : un zombie au contact et un squelette a distance
+			// --- 3. combat: a zombie up close and a skeleton at range
 			sp.getServer().runCommand("time set 18000");
 			sp.getServer().runCommand("difficulty easy");
 			sp.getServer().runCommand("give @a bread 8");
@@ -245,7 +245,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			sp.getServer().runCommand("summon skeleton " + (here.getX() - 12) + " " + here.getY() + " " + here.getZ());
 			ctx.waitTicks(5);
 			ctx.runOnClient(mc -> Collector.get().start(
-					List.of(new Target("Buche de chene", new ItemStack(Items.OAK_LOG), Set.of(Blocks.OAK_LOG), 3)), null, null, null));
+					List.of(new Target("Oak log", new ItemStack(Items.OAK_LOG), Set.of(Blocks.OAK_LOG), 3)), null, null, null));
 			ctx.waitTicks(40);
 			ctx.takeScreenshot("haulback-combat");
 			ctx.waitFor(mc -> mc.level.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class,
@@ -254,33 +254,33 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 				StringBuilder sb = new StringBuilder();
 				var pl = s.getPlayerList().getPlayers().get(0);
 				for (var m : s.overworld().getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class, new net.minecraft.world.phys.AABB(here).inflate(40))) {
-					sb.append(m.getType().toShortString()).append(" a ").append((int) m.distanceTo(pl)).append("m vue=").append(pl.hasLineOfSight(m)).append("; ");
+					sb.append(m.getType().toShortString()).append(" at ").append((int) m.distanceTo(pl)).append("m seen=").append(pl.hasLineOfSight(m)).append("; ");
 				}
 				return sb.toString();
 			});
-			System.out.println("[HAULBACK-TEST] restants : " + aliveList);
+			System.out.println("[HAULBACK-TEST] left: " + aliveList);
 			int alive = sp.getServer().computeOnServer(s -> s.overworld().getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class,
 					new net.minecraft.world.phys.AABB(here).inflate(40)).size());
 			float hp = ctx.computeOnClient(mc -> mc.player.getHealth());
-			System.out.println("[HAULBACK-TEST] combat : monstres_restants=" + alive + " pv=" + hp);
+			System.out.println("[HAULBACK-TEST] combat: mobs_left=" + alive + " hp=" + hp);
 			ctx.waitFor(mc -> !Collector.get().active(), 20 * 120);
-			if (alive > 0) throw new AssertionError("Il reste " + alive + " monstre(s) apres le combat");
+			if (alive > 0) throw new AssertionError("Still " + alive + " mob(s) left after combat");
 
-			// --- 4. squelette seul, a distance
+			// --- 4. a lone skeleton, at range
 			BlockPos here2 = sp.getServer().computeOnServer(s -> s.getPlayerList().getPlayers().get(0).blockPosition());
 			sp.getServer().runCommand("summon skeleton " + (here2.getX() - 12) + " " + here2.getY() + " " + here2.getZ()
 					+ " {ArmorItems:[{},{},{},{id:\"minecraft:leather_helmet\",count:1}]}");
 			ctx.waitTicks(5);
 			ctx.runOnClient(mc -> Collector.get().start(
-					List.of(new Target("Buche de chene", new ItemStack(Items.OAK_LOG), Set.of(Blocks.OAK_LOG), 2)), null, null, null));
+					List.of(new Target("Oak log", new ItemStack(Items.OAK_LOG), Set.of(Blocks.OAK_LOG), 2)), null, null, null));
 			ctx.waitFor(mc -> mc.level.getEntitiesOfClass(net.minecraft.world.entity.monster.skeleton.AbstractSkeleton.class,
 					mc.player.getBoundingBox().inflate(40)).isEmpty(), 20 * 60);
 			int skel = sp.getServer().computeOnServer(s -> s.overworld().getEntitiesOfClass(net.minecraft.world.entity.monster.skeleton.AbstractSkeleton.class,
 					new net.minecraft.world.phys.AABB(here2).inflate(40)).size());
 			float hp2 = ctx.computeOnClient(mc -> mc.player.getHealth());
-			System.out.println("[HAULBACK-TEST] squelette : restants=" + skel + " pv=" + hp2);
+			System.out.println("[HAULBACK-TEST] skeleton: left=" + skel + " hp=" + hp2);
 			ctx.waitFor(mc -> !Collector.get().active(), 20 * 120);
-			if (skel > 0) throw new AssertionError("Le squelette est toujours en vie");
+			if (skel > 0) throw new AssertionError("The skeleton is still alive");
 		}
 	}
 
@@ -302,7 +302,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 		return n;
 	}
 
-	/** Vitrine 3x1x3 : 5 vitres (verre) et 4 escaliers en chene. */
+	/** 3x1x3 shop window: 5 glass and 4 oak stairs. */
 	private static File writeShopSchematic(File f) throws Exception {
 		f.getParentFile().mkdirs();
 		byte[] data = new byte[9];
@@ -323,7 +323,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 		return f;
 	}
 
-	/** Petite maison de demo (plusieurs materiaux) pour la capture d'ecran. */
+	/** Small demo house (several materials) for the screenshot. */
 	private static File writeDemoSchematic(File f) throws Exception {
 		f.getParentFile().mkdirs();
 		String[] pal = {"minecraft:air", "minecraft:oak_planks", "minecraft:cobblestone", "minecraft:glass_pane",
@@ -361,7 +361,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 		return f;
 	}
 
-	/** Schematic Sponge v2 : plancher 3x1x3 de planches de chene. */
+	/** Sponge v2 schematic: 3x1x3 floor of oak planks. */
 	private static File writeFloorSchematic(File f) throws Exception {
 		f.getParentFile().mkdirs();
 		CompoundTag root = new CompoundTag();

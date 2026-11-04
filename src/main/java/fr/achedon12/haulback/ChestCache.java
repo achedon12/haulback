@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Memoire du contenu des coffres choisis. Le client ne connait un coffre qu'apres l'avoir
- * ouvert : on enregistre son contenu a chaque ouverture (par le bot ou par le joueur).
+ * Memory of the selected chests' contents. The client only knows a chest after opening
+ * it: its contents are recorded every time it is opened (by the bot or by the player).
  */
 public final class ChestCache {
 	private static final Map<BlockPos, Map<Item, Integer>> CONTENTS = new HashMap<>();
@@ -42,7 +42,7 @@ public final class ChestCache {
 		return CONTENTS.containsKey(pos);
 	}
 
-	/** Stock total connu sur une liste de coffres. */
+	/** Total known stock across a list of chests. */
 	public static Map<Item, Integer> stockOf(List<BlockPos> chests) {
 		Map<Item, Integer> out = new HashMap<>();
 		for (BlockPos p : chests) {
@@ -63,7 +63,7 @@ public final class ChestCache {
 		return n;
 	}
 
-	/** Autre moitie d'un coffre double, ou null. */
+	/** Other half of a double chest, or null. */
 	public static BlockPos partner(BlockPos pos) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return null;

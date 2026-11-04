@@ -10,7 +10,7 @@ import java.util.List;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
-/** Commande client /haulback (alias /hb). */
+/** Client command /haulback (alias /hb). */
 public final class HaulbackCommand {
 	private HaulbackCommand() {}
 

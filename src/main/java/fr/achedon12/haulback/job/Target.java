@@ -9,8 +9,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Un objectif de recolte : casser {@code needed} blocs parmi {@code sources}.
- * La progression est comptee en blocs casses par le joueur (donc par Baritone).
+ * A gathering goal: break {@code needed} blocks among {@code sources}.
+ * Progress is counted in blocks broken by the player (hence by Baritone).
  */
 public final class Target {
 	public final String label;
@@ -18,11 +18,11 @@ public final class Target {
 	public final Set<Block> sources;
 	public int needed;
 	public int got;
-	/** Objet qui compte comme "deja obtenu" s'il est dans les coffres (null : pas de deduction). */
+	/** Item that counts as "already obtained" when it is in the chests (null: no deduction). */
 	public Item stockItem;
-	/** Nombre d'objets {@link #stockItem} obtenus par bloc casse. */
+	/** Number of {@link #stockItem} items obtained per broken block. */
 	public double yieldPerBlock = 1;
-	/** Deja present dans les coffres au depart (pour l'affichage). */
+	/** Already in the chests at start (for display). */
 	public int fromStock;
 
 	public Target(String label, ItemStack icon, Set<Block> sources, int needed) {
@@ -32,7 +32,7 @@ public final class Target {
 		this.needed = needed;
 	}
 
-	/** Copie fraiche (progression a zero), pour relancer une mission. */
+	/** Fresh copy (progress reset), to restart a mission. */
 	public Target copy() {
 		Target t = new Target(label, icon.copy(), sources, needed + fromStock);
 		t.stockItem = stockItem;
@@ -40,14 +40,14 @@ public final class Target {
 		return t;
 	}
 
-	/** Version "blocs choisis" : un bloc casse rapporte l'objet du bloc. */
+	/** "Chosen blocks" version: a broken block yields the block's item. */
 	public static Target ofBlock(Block b, int count) {
 		Target t = new Target(b.getName().getString(), new ItemStack(b), Set.of(b), count);
 		t.stockItem = b.asItem();
 		return t;
 	}
 
-	/** Retire de l'objectif ce qui est deja dans les coffres (consomme le stock). */
+	/** Removes from the goal what is already in the chests (consumes the stock). */
 	public void deduct(Map<Item, Integer> stock) {
 		if (stockItem == null) return;
 		int have = stock.getOrDefault(stockItem, 0);

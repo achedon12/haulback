@@ -45,9 +45,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Atelier automatique : execute les etapes de fabrication et de cuisson d'un plan
- * (planches, batons, escaliers, verre, lingots, pioche en fer...). L'etabli et les fours
- * sont poses a cote du premier coffre et reutilises ensuite.
+ * Automatic workshop: runs the crafting and smelting steps of a plan
+ * (planks, sticks, stairs, glass, ingots, iron pickaxe...). The crafting table and furnaces
+ * are placed next to the first chest and reused afterwards.
  */
 public final class Workshop {
 
@@ -65,8 +65,8 @@ public final class Workshop {
 	private String status = "";
 	private String failure;
 
-	private int target;      // quantite a avoir en main a la fin de l'etape
-	private int startHave;   // quantite deja en inventaire au debut
+	private int target;      // amount to hold at the end of the step
+	private int startHave;   // amount already in the inventory at the start
 	private final Set<BlockPos> fetchedFrom = new HashSet<>();
 	private BlockPos goal;
 	private int opened;
@@ -104,7 +104,7 @@ public final class Workshop {
 		return steps.isEmpty() && step == null;
 	}
 
-	// ------------------------------------------------------------------ boucle
+	// ------------------------------------------------------------------ main loop
 
 	public Result tick(LocalPlayer p) {
 		ticks++;
@@ -118,7 +118,7 @@ public final class Workshop {
 				}
 				startHave = count(p, step.item());
 				target = startHave + step.count();
-				HaulbackClient.LOG.info("Atelier : etape {} x{} (en main {}, cible {}), entrees {}", step.item(), step.count(), startHave, target, step.inputs());
+				HaulbackClient.LOG.info("Workshop: step {} x{} (in hand {}, target {}), inputs {}", step.item(), step.count(), startHave, target, step.inputs());
 				fetchedFrom.clear();
 				set(State.FETCH);
 			}
@@ -151,7 +151,7 @@ public final class Workshop {
 	private Materials.Step parentOfSubStep;
 
 	private void skipStep(String why) {
-		// une sous-etape (le four) qui echoue fait echouer l'etape qui en avait besoin
+		// a failing sub-step (the furnace) fails the step that needed it
 		if (parentOfSubStep != null && steps.peek() == parentOfSubStep) {
 			steps.poll();
 			skipped.add(name(parentOfSubStep.item()) + L.t("haulback.msg.no_furnace_paren") + why + ")");
@@ -168,16 +168,16 @@ public final class Workshop {
 		return mc.player;
 	}
 
-	// ------------------------------------------------------------------ 1. chercher les ingredients
+	// ------------------------------------------------------------------ 1. fetch ingredients
 
-	/** Quantite de chaque ingredient (et combustible) qu'il faut avoir en inventaire. */
+	/** Amount of each ingredient (and fuel) needed in the inventory. */
 	private Map<Item, Integer> needs(LocalPlayer p) {
 		Map<Item, Integer> out = new LinkedHashMap<>();
 		int toMake = Math.max(0, target - count(p, step.item()));
 		for (Map.Entry<Item, Double> e : step.inputs().entrySet()) {
 			out.put(e.getKey(), (int) Math.ceil(toMake * e.getValue() - 1e-9));
 		}
-		// l'etabli n'existe pas encore : il consommera une buche (ou 4 planches) en plus
+		// the crafting table does not exist yet: it will use one extra log (or 4 planks)
 		if (!step.smelt() && table() == null && count(p, Items.CRAFTING_TABLE) == 0) {
 			for (Item it : out.keySet()) {
 				if (it.getDefaultInstance().is(ItemTags.LOGS)) {
@@ -207,7 +207,7 @@ public final class Workshop {
 			set(State.STATION);
 			return;
 		}
-		// coffre le plus proche qui contient quelque chose d'utile
+		// nearest chest holding something useful
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos c : chests) {
@@ -234,7 +234,7 @@ public final class Workshop {
 		AbstractContainerMenu menu = reachAndOpen(p, best, false);
 		if (menu == null) return;
 		if (ticks - opened < 4) return;
-		// une action par tick : deposer l'inutile, puis prendre l'utile
+		// one action per tick: store what is useless, then take what is useful
 		for (Slot s : menu.slots) {
 			if (s.container != p.getInventory() || s.getContainerSlot() >= Inventory.INVENTORY_SIZE || !s.hasItem()) continue;
 			ItemStack st = s.getItem();
@@ -269,11 +269,11 @@ public final class Workshop {
 		opened = 0;
 	}
 
-	// ------------------------------------------------------------------ 2. poste de travail
+	// ------------------------------------------------------------------ 2. workstation
 
 	private void tickStation(LocalPlayer p) {
 		Map<Item, Integer> need = needs(p);
-		// on fabrique ce qu'on peut avec ce qu'on a ; si rien du tout, on saute
+		// craft what we can with what we have; if nothing at all, skip
 		boolean any = true;
 		for (Map.Entry<Item, Integer> e : need.entrySet()) {
 			if (e.getValue() > 0 && countInput(p, e.getKey()) == 0) any = false;
@@ -295,7 +295,7 @@ public final class Workshop {
 				return;
 			}
 			if (furnaces.size() < desired && !extraFurnaceTried) {
-				// un four de plus pour aller plus vite, si on a la pierre
+				// one more furnace to go faster, if we have the stone
 				extraFurnaceTried = true;
 				placeStation(p, Items.FURNACE);
 				return;
@@ -333,19 +333,19 @@ public final class Workshop {
 		return out;
 	}
 
-	/** Pose un etabli ou un four a cote du premier coffre (en le fabriquant si besoin). */
+	/** Places a crafting table or a furnace next to the first chest (crafting it if needed). */
 	private boolean placeStation(LocalPlayer p, Item item) {
 		status = L.t("haulback.status.workshop_setup") + (item == Items.FURNACE ? L.t("haulback.word.the_furnace") : L.t("haulback.word.the_table"));
-		if (pendingTake > 0) return false; // une fabrication 2x2 est en cours
+		if (pendingTake > 0) return false; // a 2x2 craft is in progress
 		if (count(p, item) == 0) {
-			// fabrication : l'etabli dans l'inventaire (2x2), le four a l'etabli
+			// crafting: the table in the inventory grid (2x2), the furnace at the table
 			if (item == Items.CRAFTING_TABLE) {
 				if (!craftInInventory(p, Items.CRAFTING_TABLE)) {
 					skipStep(L.t("haulback.reason.no_table"));
 				}
 				return false;
 			}
-			// four : etape de fabrication inseree juste avant (si on n'en a aucun, c'est indispensable)
+			// furnace: crafting step inserted right before (mandatory when there is none)
 			if (!furnaces().isEmpty() && Workshop.count(p, Items.COBBLESTONE) < 8 && ChestCache.stockOf(chests).getOrDefault(Items.COBBLESTONE, 0) < 8) {
 				set(State.SMELT_LOAD);
 				return false;
@@ -397,7 +397,7 @@ public final class Workshop {
 			if (reserved.contains(pos) || !mc.level.getBlockState(pos).canBeReplaced()) continue;
 			if (!mc.level.getBlockState(below).isFaceSturdy(mc.level, below, Direction.UP)) continue;
 			if (new AABB(pos).intersects(p.getBoundingBox())) continue;
-			// ne pas boucher l'acces a un coffre
+			// do not block access to a chest
 			boolean nextToChest = false;
 			for (BlockPos c : chests) if (c.distManhattan(pos) <= 1) nextToChest = true;
 			if (nextToChest) continue;
@@ -411,7 +411,7 @@ public final class Workshop {
 		return best;
 	}
 
-	// ------------------------------------------------------------------ 3. fabrication
+	// ------------------------------------------------------------------ 3. crafting
 
 	private RecipeDisplayEntry findRecipe(LocalPlayer p, Item out, boolean grid2) {
 		ContextMap ctx = SlotDisplayContext.fromLevel(mc.level);
@@ -434,7 +434,7 @@ public final class Workshop {
 	}
 
 	private boolean craftInInventory(LocalPlayer p, Item out) {
-		// planches d'abord si besoin
+		// planks first if needed
 		if (count(p, s -> s.is(ItemTags.PLANKS)) < 4) {
 			RecipeDisplayEntry planks = null;
 			ContextMap ctx = SlotDisplayContext.fromLevel(mc.level);
@@ -460,7 +460,7 @@ public final class Workshop {
 
 	private int pendingTake;
 
-	/** Appele chaque tick : recupere le resultat d'une fabrication 2x2 lancee plus tot. */
+	/** Called every tick: collects the result of a 2x2 craft started earlier. */
 	public void flushInventoryCraft(LocalPlayer p) {
 		if (pendingTake <= 0) return;
 		if (--pendingTake == 0 && p.inventoryMenu.getSlot(0).hasItem()) {
@@ -496,7 +496,7 @@ public final class Workshop {
 				if (e == null || !e.canCraft(have)) {
 					clearGrid(p, cm);
 					closeScreen(p);
-					// plus d'ingredients en main : retour aux coffres s'il en reste, sinon on passe
+					// out of ingredients: back to the chests if any are left, otherwise move on
 					if (now > startHave && fetchedFrom.size() < chests.size()) {
 						set(State.FETCH);
 					} else if (now > startHave) {
@@ -507,7 +507,7 @@ public final class Workshop {
 					return;
 				}
 				boolean bulk = target - now >= 32;
-				HaulbackClient.LOG.info("Atelier : recette {} pour {} (en main {} / cible {})", e.id(), step.item(), now, target);
+				HaulbackClient.LOG.info("Workshop: recipe {} for {} (in hand {} / target {})", e.id(), step.item(), now, target);
 				mc.gameMode.handlePlaceRecipe(cm.containerId, e.id(), bulk);
 				craftStage = 1;
 				retries = 0;
@@ -532,7 +532,7 @@ public final class Workshop {
 		}
 	}
 
-	// ------------------------------------------------------------------ 4. cuisson
+	// ------------------------------------------------------------------ 4. smelting
 
 	private int loadedThisRound;
 
@@ -546,7 +546,7 @@ public final class Workshop {
 				else skipStep(L.t("haulback.reason.nothing_to_smelt"));
 				return;
 			}
-			// temps de cuisson : 10 s par objet, en parallele sur les fours
+			// smelting time: 10 s per item, in parallel across furnaces
 			int perFurnace = (int) Math.ceil(loadedThisRound / (double) Math.max(1, Math.min(furnaces.size(), loadedThisRound)));
 			waitUntil = mc.level.getGameTime() + perFurnace * 200L + 30;
 			set(State.SMELT_WAIT);
@@ -573,7 +573,7 @@ public final class Workshop {
 		if (furnaceIdx >= furnaces.size()) {
 			loadedThisRound = 0;
 			furnaceIdx = 0;
-			// encore a cuire ? on recharge, sinon on range
+			// more to smelt? reload, otherwise store
 			Item input = step.inputs().keySet().iterator().next();
 			if (count(p, step.item()) < target && count(p, input) > 0 && fuelUnits(p) > 0) set(State.SMELT_LOAD);
 			else if (count(p, step.item()) < target && fetchedFrom.size() < chests.size()) set(State.FETCH);
@@ -589,7 +589,7 @@ public final class Workshop {
 			click(p, fm, 2, 0, ClickType.QUICK_MOVE);
 			return;
 		}
-		// si la cuisson n'est pas finie (fours plus lents que prevu), on attend encore un peu
+		// if smelting is not done (furnaces slower than expected), wait a little longer
 		if (fm.getSlot(0).hasItem() && fm.isLit() && ticks < 600) return;
 		closeScreen(p);
 		furnaceIdx++;
@@ -609,7 +609,7 @@ public final class Workshop {
 		Inventory inv = p.getInventory();
 		for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
 			ItemStack s = inv.getItem(i);
-			// les planches/buches qui servent d'ingredient ne sont pas du combustible
+			// planks/logs used as ingredients are not fuel
 			if (isFuel(s) && !step.inputs().containsKey(s.getItem())) n += s.getCount() * burnValue(s);
 		}
 		return (int) n;
@@ -626,7 +626,7 @@ public final class Workshop {
 
 	private void putFuel(LocalPlayer p, AbstractFurnaceMenu fm, int items) {
 		ItemStack inSlot = fm.getSlot(1).getItem();
-		// meme type de combustible que celui deja present, sinon charbon d'abord
+		// same fuel type as the one already there, otherwise coal first
 		for (int pass = 0; pass < 2; pass++) {
 			for (Slot s : fm.slots) {
 				if (s.container != p.getInventory() || !s.hasItem()) continue;
@@ -642,7 +642,7 @@ public final class Workshop {
 		}
 	}
 
-	/** Pose exactement {@code n} objets correspondant a {@code pred} dans la case {@code target}. */
+	/** Puts exactly {@code n} items matching {@code pred} into slot {@code target}. */
 	private int putExact(LocalPlayer p, AbstractContainerMenu menu, int target, java.util.function.Predicate<ItemStack> pred, int n) {
 		int left = n;
 		for (Slot s : menu.slots) {
@@ -662,7 +662,7 @@ public final class Workshop {
 		return n - left;
 	}
 
-	// ------------------------------------------------------------------ 5. ranger
+	// ------------------------------------------------------------------ 5. store
 
 	private void tickDeposit(LocalPlayer p) {
 		BlockPos best = chests.stream().min(Comparator.comparingDouble(c -> c.distSqr(p.blockPosition()))).orElse(null);
@@ -681,19 +681,19 @@ public final class Workshop {
 			return;
 		}
 		ChestCache.snapshot(best, menu, p.getInventory());
-		HaulbackClient.LOG.info("Atelier : depot fini apres {}, coffre = {}", step.item(), ChestCache.stockOf(List.of(best)));
+		HaulbackClient.LOG.info("Workshop: stored after {}, chest = {}", step.item(), ChestCache.stockOf(List.of(best)));
 		closeScreen(p);
 		step = null;
 		set(State.NEXT);
 	}
 
-	/** Objets gardes sur soi : outils, armure, nourriture, et le materiel d'atelier. */
+	/** Items kept on the player: tools, armor, food, and workshop equipment. */
 	private static boolean keep(ItemStack s) {
 		return s.isDamageableItem() || s.has(DataComponents.FOOD) || s.has(DataComponents.EQUIPPABLE)
 				|| s.is(Items.CRAFTING_TABLE) || s.is(Items.FURNACE) || s.is(Items.TOTEM_OF_UNDYING);
 	}
 
-	// ------------------------------------------------------------------ utilitaires
+	// ------------------------------------------------------------------ utilities
 
 	private void walkTo(BlockPos pos) {
 		IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
@@ -706,7 +706,7 @@ public final class Workshop {
 		}
 	}
 
-	/** Va jusqu'au bloc, le regarde et l'ouvre. Renvoie le menu une fois ouvert. */
+	/** Walks to the block, looks at it and opens it. Returns the menu once open. */
 	private AbstractContainerMenu reachAndOpen(LocalPlayer p, BlockPos pos, boolean station) {
 		if (mc.screen instanceof AbstractContainerScreen<?> s && !(s.getMenu() instanceof InventoryMenu)) {
 			if (opened == 0) opened = ticks;
@@ -756,13 +756,13 @@ public final class Workshop {
 		return ChestCache.count(c, Items.COAL) + ChestCache.count(c, Items.CHARCOAL) > 0;
 	}
 
-	/** L'etape demande un etabli qui n'existe pas encore et on n'a pas de quoi le fabriquer. */
+	/** The step needs a crafting table that does not exist yet, and there is nothing to make one. */
 	private boolean needTableMaterial(LocalPlayer p) {
 		if (step == null || step.smelt() || table() != null || count(p, Items.CRAFTING_TABLE) > 0) return false;
 		return count(p, s -> s.is(ItemTags.LOGS)) == 0 && count(p, s -> s.is(ItemTags.PLANKS)) < 4;
 	}
 
-	/** Comme count, mais toutes les planches se valent quand l'ingredient est une planche (batons, etabli). */
+	/** Like count, but any planks will do when the ingredient is a plank (sticks, crafting table). */
 	private static int countInput(LocalPlayer p, Item it) {
 		if (it.getDefaultInstance().is(ItemTags.PLANKS)) return count(p, s -> s.is(ItemTags.PLANKS));
 		return count(p, it);

@@ -35,9 +35,9 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Fabrique les outils qui manquent avant la recolte :
- * buches -> planches -> batons -> etabli -> pioche en bois -> pierre -> outils en pierre.
- * Un outil deja present dans l'inventaire n'est jamais refabrique.
+ * Crafts the missing tools before gathering:
+ * logs -> planks -> sticks -> crafting table -> wooden pickaxe -> stone -> stone tools.
+ * A tool already in the inventory is never crafted again.
  */
 public final class ToolCrafter {
 
@@ -45,9 +45,9 @@ public final class ToolCrafter {
 
 	private enum Step {GET_LOGS, CRAFT_SMALL, PLACE_TABLE, OPEN_TABLE, CRAFT_TABLE, GET_STONE, TO_TABLE, PICK_TABLE, DONE}
 
-	/** Une recette : grille (largeur 2 ou 3) + ingredient par case (null = vide). */
+	/** A recipe: grid (width 2 or 3) + ingredient per cell (null = empty). */
 	private record Recipe(String name, Item output, int width, List<Predicate<ItemStack>> grid) {
-		/** Nom affiche : celui de l'objet produit, sinon la cle de traduction. */
+		/** Display name: the produced item's name, otherwise the translation key. */
 		String label() {
 			return output != Items.AIR ? output.getName().getString() : L.t(name);
 		}
@@ -110,7 +110,7 @@ public final class ToolCrafter {
 
 	private final List<Item> planned = new ArrayList<>();
 
-	/** Outils prevus pour cette fabrication (pour le HUD). */
+	/** Tools planned for this run (for the HUD). */
 	public List<Item> planned() {
 		return planned;
 	}
@@ -119,16 +119,16 @@ public final class ToolCrafter {
 		return failure;
 	}
 
-	// ------------------------------------------------------------------ planification
+	// ------------------------------------------------------------------ planning
 
 	/**
-	 * Prepare le plan. Renvoie false s'il n'y a rien a fabriquer.
-	 * Si un outil en fer (ou mieux) est requis et absent, {@link #failure()} est rempli.
+	 * Prepares the plan. Returns false if there is nothing to craft.
+	 * If an iron (or better) tool is required and missing, {@link #failure()} is set.
 	 */
-	/** Batons en plus a fabriquer (pour une future pioche en fer / diamant faite a l'atelier). */
+	/** Extra sticks to craft (for a later iron / diamond pickaxe made at the workshop). */
 	public int extraSticks;
 
-	/** Niveau de pioche exige par les cibles : 0 bois, 1 pierre, 2 fer, 3 diamant. */
+	/** Pickaxe tier required by the targets: 0 wood, 1 stone, 2 iron, 3 diamond. */
 	public static int requiredTier(List<Target> targets) {
 		int t = 0;
 		for (Target x : targets) for (Block b : x.sources) {
@@ -155,22 +155,22 @@ public final class ToolCrafter {
 			}
 		}
 		int pickTier = bestPickTier(p);
-		// fer et diamant : geres par l'atelier apres les outils en pierre (voir Collector)
+		// iron and diamond: handled by the workshop after the stone tools (see Collector)
 		int stoneNeed = Math.min(requiredTier, 1);
-		// un outil deja present n'est jamais refabrique, sauf si son niveau est insuffisant
+		// a tool already present is never crafted again, unless its tier is too low
 		HaulbackConfig cfg = HaulbackConfig.get();
 		boolean stoneTier = cfg.toolTier >= 1;
 		boolean needPick = (cfg.toolPickaxe && pickTier < 0) || pickTier < stoneNeed || (requiredTier >= 2 && pickTier < 1);
 		woodRecipes.clear();
 		if (needPick) {
-			// en pierre si demande, ou si les blocs l'exigent
+			// stone if requested, or if the blocks require it
 			if (stoneTier || requiredTier >= 1) stoneTools.add(STONE_PICK);
 			else woodRecipes.add(WOOD_PICK);
 		}
 		if (cfg.toolAxe && !has(p, s -> s.is(ItemTags.AXES))) (stoneTier ? stoneTools : woodRecipes).add(stoneTier ? STONE_AXE : WOOD_AXE);
 		if (cfg.toolSword && !has(p, s -> s.is(ItemTags.SWORDS))) (stoneTier ? stoneTools : woodRecipes).add(stoneTier ? STONE_SWORD : WOOD_SWORD);
 		if (cfg.toolShovel && !has(p, s -> s.is(ItemTags.SHOVELS))) (stoneTier ? stoneTools : woodRecipes).add(stoneTier ? STONE_SHOVEL : WOOD_SHOVEL);
-		// pour miner la pierre, il faut au moins une pioche : on en fait une en bois d'abord
+		// mining stone needs at least a pickaxe: make a wooden one first
 		woodPick = !stoneTools.isEmpty() && pickTier < 0 && !woodRecipes.contains(WOOD_PICK);
 		if (woodPick) woodRecipes.add(0, WOOD_PICK);
 		if (stoneTools.isEmpty() && woodRecipes.isEmpty() && extraSticks <= 0) return false;
@@ -203,7 +203,7 @@ public final class ToolCrafter {
 		return true;
 	}
 
-	/** -1 : aucune pioche, 0 : bois/or, 1 : pierre/cuivre, 2 : fer, 3 : diamant/netherite. */
+	/** -1: no pickaxe, 0: wood/gold, 1: stone/copper, 2: iron, 3: diamond/netherite. */
 	static int bestPickTier(LocalPlayer p) {
 		int best = -1;
 		Inventory inv = p.getInventory();
@@ -360,7 +360,7 @@ public final class ToolCrafter {
 					Collector.get().say(L.t("haulback.msg.tools_ready"), net.minecraft.ChatFormatting.GREEN);
 					return Result.DONE;
 				}
-				// on casse uniquement NOTRE etabli (jamais celui d'un autre joueur)
+				// only break OUR crafting table (never another player's)
 				if (p.getEyePosition().distanceTo(Vec3.atCenterOf(tablePos)) < 4.5) {
 					if (!Look.towards(p, Vec3.atCenterOf(tablePos))) return Result.RUNNING;
 					mc.gameMode.continueDestroyBlock(tablePos, Direction.UP);
@@ -404,11 +404,11 @@ public final class ToolCrafter {
 		return null;
 	}
 
-	// ------------------------------------------------------------------ fabrication par clics
+	// ------------------------------------------------------------------ crafting by clicks
 
 	/**
-	 * Execute la file de recettes, une etape par appel :
-	 * 0 = poser les ingredients, 1..3 = attendre la reponse du serveur, 4 = prendre le resultat, 5 = vider la grille.
+	 * Runs the recipe queue, one stage per call:
+	 * 0 = place ingredients, 1..3 = wait for the server, 4 = take the result, 5 = clear the grid.
 	 */
 	private Result runQueue(LocalPlayer p, AbstractContainerMenu menu) {
 		Recipe r = queue.peek();
@@ -486,7 +486,7 @@ public final class ToolCrafter {
 		}
 	}
 
-	// ------------------------------------------------------------------ etabli
+	// ------------------------------------------------------------------ crafting table
 
 	private BlockPos placeTable(LocalPlayer p) {
 		int slot = -1;

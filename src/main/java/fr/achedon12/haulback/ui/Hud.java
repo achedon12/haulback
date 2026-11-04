@@ -18,10 +18,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HUD de mission : carte graphite en haut a gauche.
- * Voyant d'etat qui respire, pourcentage global, barres animees avec reflet,
- * distances vers le coffre et le point A, chrono. Reste affiche quelques secondes
- * a la fin avec le resultat, puis s'efface.
+ * Mission HUD: graphite card in the top-left corner.
+ * Breathing status light, overall percentage, animated bars with a sheen,
+ * distances to the chest and point A, timer. Stays visible a few seconds
+ * at the end with the result, then fades out.
  */
 public final class Hud {
 	private static final int W = 150;
@@ -29,7 +29,7 @@ public final class Hud {
 	private static final int MAX_ROWS = 3;
 	private static final long LINGER_MS = 7000;
 
-	/** Valeurs affichees (lissees) par cible, pour que les barres glissent au lieu de sauter. */
+	/** Displayed (smoothed) values per target, so bars glide instead of jumping. */
 	private static final Map<Target, Float> shown = new IdentityHashMap<>();
 	private static float shownTotal;
 	private static float appear;
@@ -79,7 +79,7 @@ public final class Hud {
 		int accent = phaseColor(c, lingering);
 		g.fill(x, y + 3, x + 1, y + h - 3, mul(accent, alpha));
 
-		// en-tete
+		// header
 		int cx = x + 7;
 		int cy = y + 6;
 		float pulse = lingering ? 1f : 0.55f + 0.45f * (float) Math.sin(now / 260.0);
@@ -90,7 +90,7 @@ public final class Hud {
 		roundRect(g, right - pw, cy - 2, pw, 11, mul(glow(accent, 0x2E), alpha));
 		g.drawString(f, phase, right - pw + 4, cy, mul(accent, alpha), false);
 
-		// statut + pourcentage
+		// status + percentage
 		int sy = cy + 14;
 		shownTotal = approach(shownTotal, overall(ts), dt * 2.5f);
 		String pct;
@@ -105,7 +105,7 @@ public final class Hud {
 		else bar(g, cx, by, right - cx, 2, lingering && c.endedWell() ? 1f : shownTotal, accent, alpha, now);
 		int ry = by + 6;
 
-		// outils en fabrication
+		// tools being crafted
 		if (!toolPlan.isEmpty()) {
 			int ix = cx;
 			for (net.minecraft.world.item.Item it : toolPlan) {
@@ -118,7 +118,7 @@ public final class Hud {
 			ry += 14;
 		}
 
-		// objectifs
+		// goals
 		if (rows > 0) {
 			ry += 3;
 			for (int i = 0; i < rows; i++) {
@@ -142,7 +142,7 @@ public final class Hud {
 			}
 		}
 
-		// pied
+		// footer
 		ry += 3;
 		String left = distances(mc.player, c);
 		String chrono = chrono(c, now, lingering);
@@ -158,7 +158,7 @@ public final class Hud {
 		g.pose().popMatrix();
 	}
 
-	// ------------------------------------------------------------------ contenu
+	// ------------------------------------------------------------------ content
 
 	private static float overall(List<Target> ts) {
 		int done = 0, total = 0;
@@ -276,7 +276,7 @@ public final class Hud {
 		}
 	}
 
-	/** Texte en capitales espacees. */
+	/** Spaced capital letters. */
 	private static void drawSpaced(GuiGraphics g, Font f, String s, int x, int y, int color) {
 		int cx = x;
 		for (int i = 0; i < s.length(); i++) {
@@ -290,7 +290,7 @@ public final class Hud {
 		return (a << 24) | (color & 0xFFFFFF);
 	}
 
-	/** Applique l'opacite globale (apparition/disparition) a une couleur ARGB. */
+	/** Applies the global opacity (fade in/out) to an ARGB color. */
 	private static int mul(int argb, int alpha) {
 		int a = (argb >>> 24) * alpha / 255;
 		return (a << 24) | (argb & 0xFFFFFF);

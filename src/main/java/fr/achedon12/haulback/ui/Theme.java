@@ -1,6 +1,6 @@
 package fr.achedon12.haulback.ui;
 
-/** Palette graphite : surfaces sombres, la couleur sert uniquement de "lumiere" (etat, action). */
+/** Graphite palette: dark surfaces, color is only used as "light" (state, action). */
 public final class Theme {
 	public static final int SCRIM = 0xB0080A0C;
 	public static final int PANEL = 0xF2171A1E;

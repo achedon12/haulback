@@ -7,16 +7,16 @@ import net.minecraft.world.phys.Vec3;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Rotation "humaine" de la tete : on tourne progressivement vers la cible, avec une vitesse
- * qui ralentit a l'approche et un leger tremblement, au lieu d'un saut instantane.
+ * "Human" head rotation: turn progressively towards the target, with a speed
+ * that slows down on approach and a slight jitter, instead of an instant snap.
  */
 public final class Look {
 	private Look() {}
 
 	/**
-	 * Tourne la tete d'un pas vers {@code target}.
+	 * Turns the head one step towards {@code target}.
 	 *
-	 * @return true quand le regard est sur la cible (a quelques degres pres)
+	 * @return true once the view is on target (within a few degrees)
 	 */
 	public static boolean towards(LocalPlayer p, Vec3 target) {
 		Vec3 eye = p.getEyePosition();
@@ -31,7 +31,7 @@ public final class Look {
 		if (dist < 4f) return true;
 
 		ThreadLocalRandom r = ThreadLocalRandom.current();
-		// vitesse proportionnelle a l'ecart (amorti), bornee, avec un peu de bruit
+		// speed proportional to the gap (damped), clamped, with a bit of noise
 		float speed = Mth.clamp(dist * 0.35f, 3f, 28f) * (0.85f + r.nextFloat() * 0.3f);
 		float k = Math.min(1f, speed / dist);
 		p.setYRot(p.getYRot() + dYaw * k + (r.nextFloat() - 0.5f) * 0.6f);

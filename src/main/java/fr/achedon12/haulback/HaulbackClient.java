@@ -63,7 +63,7 @@ public final class HaulbackClient implements ClientModInitializer {
 			try {
 				Collector.get().tick();
 			} catch (RuntimeException e) {
-				LOG.error("Erreur dans la boucle Haulback", e);
+				LOG.error("Error in the Haulback loop", e);
 				Collector.get().stop(L.t("haulback.msg.internal_error"));
 			}
 		});
@@ -77,12 +77,12 @@ public final class HaulbackClient implements ClientModInitializer {
 			return InteractionResult.PASS;
 		});
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(MOD_ID, "status"), Hud::render);
-		LOG.info("Haulback pret (touche H : interface, J : definir le coffre vise)");
+		LOG.info("Haulback ready (H: interface, J: toggle targeted chest, K: start/stop)");
 	}
 
 	private static BlockPos lastUsed;
 
-	/** Ouvre l'interface au prochain tick (depuis une commande, le chat doit d'abord se fermer). */
+	/** Opens the interface on the next tick (from a command, the chat must close first). */
 	public static void requestOpen() {
 		openRequested = true;
 	}
@@ -96,7 +96,7 @@ public final class HaulbackClient implements ClientModInitializer {
 		return k == null ? "?" : k.getTranslatedKeyMessage().getString();
 	}
 
-	/** Quand le joueur (ou le bot) ouvre un des coffres choisis, on memorise son contenu. */
+	/** When the player (or the bot) opens one of the selected chests, remember its contents. */
 	private static void rememberOpenedChest(Minecraft mc) {
 		if (lastUsed == null || mc.player == null) return;
 		if (!(mc.screen instanceof AbstractContainerScreen<?> s) || s.getMenu() instanceof InventoryMenu) return;
@@ -107,7 +107,7 @@ public final class HaulbackClient implements ClientModInitializer {
 		if (key != null && mc.player.tickCount % 5 == 0) ChestCache.snapshot(key, s.getMenu(), mc.player.getInventory());
 	}
 
-	/** Ajoute ou retire le coffre vise de la liste. Renvoie un message pour l'interface. */
+	/** Adds or removes the targeted chest. Returns a message for the interface. */
 	public static String toggleChest(Minecraft mc) {
 		HitResult hr = mc.hitResult;
 		if (hr instanceof BlockHitResult bhr && hr.getType() == HitResult.Type.BLOCK && mc.level != null) {

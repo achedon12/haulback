@@ -85,6 +85,10 @@ Schematics go into the game's `schematics` folder (**Folder** button in the inte
 
 The in-game tests cover: crafting tools from an empty inventory, gathering with stock deduction across two chests, building a schematic, the automatic workshop (smelting and crafting), the iron pickaxe chain, and fighting a zombie and a skeleton.
 
+## Contributing
+
+Contributions are welcome: bug reports, translations, docs and code. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Adding a language only takes a JSON file.
+
 ## License
 
 LGPL-3.0, like Baritone.

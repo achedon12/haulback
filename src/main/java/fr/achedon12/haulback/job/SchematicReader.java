@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Lit un schematic (.litematic, .schem, .schematic) via le lecteur integre a Baritone. */
+/** Reads a schematic (.litematic, .schem, .schematic) with Baritone's built-in reader. */
 public final class SchematicReader {
 
 	public record Result(Map<Item, Integer> items, int width, int height, int length, int totalBlocks) {}
@@ -32,7 +32,7 @@ public final class SchematicReader {
 	public static Result read(File file) throws IOException {
 		Optional<ISchematicFormat> format = BaritoneAPI.getProvider().getSchematicSystem().getByFile(file);
 		if (format.isEmpty()) {
-			throw new IOException("Format non reconnu : " + file.getName());
+			throw new IOException("Unsupported format: " + file.getName());
 		}
 		IStaticSchematic s;
 		try (InputStream in = new FileInputStream(file)) {
@@ -54,7 +54,7 @@ public final class SchematicReader {
 				}
 			}
 		}
-		// tri par quantite decroissante
+		// sort by decreasing amount
 		List<Map.Entry<Item, Integer>> list = new ArrayList<>(counts.entrySet());
 		list.sort(Map.Entry.<Item, Integer>comparingByValue(Comparator.reverseOrder()));
 		Map<Item, Integer> sorted = new LinkedHashMap<>();

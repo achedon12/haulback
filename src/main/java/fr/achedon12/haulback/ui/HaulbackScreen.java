@@ -39,14 +39,14 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-/** Interface principale (touche H par defaut). */
+/** Main interface (H key by default). */
 public final class HaulbackScreen extends Screen {
 
 	private enum Tab {BLOCKS, SCHEMATIC, OPTIONS}
 
 	private enum Kind {NORMAL, PRIMARY, DANGER, GHOST}
 
-	/** Categories du catalogue de blocs. */
+	/** Categories of the block catalog. */
 	private enum Category {
 		ALL("haulback.cat.all", b -> true),
 		ORES("haulback.cat.ores", b -> path(b).endsWith("_ore") || path(b).equals("ancient_debris")),
@@ -72,7 +72,7 @@ public final class HaulbackScreen extends Screen {
 		}
 	}
 
-	// etat conserve entre deux ouvertures
+	// state kept between two openings
 	private static Tab tab = Tab.BLOCKS;
 	private static Category category = Category.ALL;
 	private static final Map<Block, Integer> selection = new LinkedHashMap<>();
@@ -80,7 +80,7 @@ public final class HaulbackScreen extends Screen {
 	private static SchematicReader.Result schematicData;
 	private static String schematicError;
 	private static final Set<Item> forceDirect = new HashSet<>();
-	/** Mode schematic : 0 = materiaux seulement, 1 = construction seulement, 2 = les deux. */
+	/** Schematic mode: 0 = materials only, 1 = build only, 2 = both. */
 	private static int schemMode = 2;
 	private static BlockPos origin;
 	private static String search = "";
@@ -100,14 +100,14 @@ public final class HaulbackScreen extends Screen {
 	private final long openedAt = System.currentTimeMillis();
 	private float tabAnim = tab.ordinal();
 
-	// geometrie
+	// geometry
 	private int px, py, pw, ph, bodyTop, bodyBottom, leftX, leftW, rightX, rightW;
 
 	public HaulbackScreen() {
 		super(Component.literal("Haulback"));
 	}
 
-	/** Ouvre directement sur l'onglet schematic (utilise aussi par les tests). */
+	/** Opens directly on the schematic tab (also used by the tests). */
 	public static HaulbackScreen onSchematicTab(File file) {
 		tab = Tab.SCHEMATIC;
 		HaulbackScreen s = new HaulbackScreen();
@@ -115,13 +115,13 @@ public final class HaulbackScreen extends Screen {
 		return s;
 	}
 
-	/** Ouvre sur l'onglet options (utilise aussi par les tests). */
+	/** Opens on the options tab (also used by the tests). */
 	public static HaulbackScreen onOptionsTab() {
 		tab = Tab.OPTIONS;
 		return new HaulbackScreen();
 	}
 
-	/** Ouvre sur l'onglet blocs avec une selection donnee (utilise aussi par les tests). */
+	/** Opens on the blocks tab with a given selection (also used by the tests). */
 	public static HaulbackScreen onBlocksTab(Map<Block, Integer> sel) {
 		tab = Tab.BLOCKS;
 		selection.clear();
@@ -137,7 +137,7 @@ public final class HaulbackScreen extends Screen {
 		return b.defaultBlockState().is(tag);
 	}
 
-	// ------------------------------------------------------------------ cycle de vie
+	// ------------------------------------------------------------------ lifecycle
 
 	@Override
 	protected void init() {
@@ -248,7 +248,7 @@ public final class HaulbackScreen extends Screen {
 		try {
 			schematicData = SchematicReader.read(f);
 		} catch (Exception e) {
-			HaulbackClient.LOG.warn("Lecture du schematic {} impossible", f, e);
+			HaulbackClient.LOG.warn("Cannot read schematic {}", f, e);
 			schematicError = L.t("haulback.ui.read_error") + e.getMessage();
 		}
 		recomputePlan();
@@ -265,7 +265,7 @@ public final class HaulbackScreen extends Screen {
 		flashUntil = System.currentTimeMillis() + 4000;
 	}
 
-	// ------------------------------------------------------------------ rendu
+	// ------------------------------------------------------------------ rendering
 
 	@Override
 	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
@@ -320,7 +320,7 @@ public final class HaulbackScreen extends Screen {
 		g.fill(px + 1, py + 37, px + pw - 1, py + 38, Theme.LINE);
 	}
 
-	// ---- onglet blocs
+	// ---- blocks tab
 
 	private void renderBlocksTab(GuiGraphics g, int mx, int my) {
 		round(g, leftX, bodyTop, leftW, 22, Theme.SURFACE);
@@ -383,7 +383,7 @@ public final class HaulbackScreen extends Screen {
 					+ (selection.containsKey(hovered) ? L.t("haulback.ui.shift_remove") : "")), mx, my);
 		}
 
-		// ---- colonne selection
+		// ---- selection column
 		g.drawString(font, L.t("haulback.ui.selection"), rightX, bodyTop + 7, Theme.TEXT, false);
 		String badge = String.valueOf(selection.size());
 		int bx = rightX + font.width(L.t("haulback.ui.selection")) + 6;
@@ -458,7 +458,7 @@ public final class HaulbackScreen extends Screen {
 		return s + (s > 1 ? L.t("haulback.ui.stacks") : L.t("haulback.ui.stack")) + (r > 0 ? " + " + r : "");
 	}
 
-	// ---- onglet schematic
+	// ---- schematic tab
 
 	private void renderSchematicTab(GuiGraphics g, int mx, int my) {
 		int bw = font.width(L.t("haulback.ui.folder")) + 12;
@@ -654,7 +654,7 @@ public final class HaulbackScreen extends Screen {
 		scrollbar(g, x + rightW + 3, top, bodyBottom, rightScroll, rightMax, visible);
 	}
 
-	// ---- onglet options
+	// ---- options tab
 
 	private void renderOptionsTab(GuiGraphics g, int mx, int my) {
 		HaulbackConfig cfg = HaulbackConfig.get();
@@ -703,7 +703,7 @@ public final class HaulbackScreen extends Screen {
 			ny += 10;
 		}
 
-		// comportement
+		// behavior
 		int x = rightX;
 		g.drawString(font, L.t("haulback.ui.behavior"), x, bodyTop + 4, Theme.TEXT, false);
 		int y = bodyTop + 18;
@@ -760,7 +760,7 @@ public final class HaulbackScreen extends Screen {
 		g.pose().popMatrix();
 	}
 
-	// ---- pied de page
+	// ---- footer
 
 	private void renderFooter(GuiGraphics g, int mx, int my) {
 		int fy = py + ph - 36;
@@ -880,7 +880,7 @@ public final class HaulbackScreen extends Screen {
 		if (Collector.get().active()) onClose();
 	}
 
-	// ------------------------------------------------------------------ widgets dessines a la main
+	// ------------------------------------------------------------------ hand-drawn widgets
 
 	private void button(GuiGraphics g, int mx, int my, int x, int y, int w, int h, String label, Kind kind, Consumer<MouseButtonEvent> action) {
 		boolean hover = in(mx, my, x, y, x + w, y + h);
@@ -976,7 +976,7 @@ public final class HaulbackScreen extends Screen {
 		return Math.max(lo, Math.min(hi, v));
 	}
 
-	// ------------------------------------------------------------------ entrees
+	// ------------------------------------------------------------------ input
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {

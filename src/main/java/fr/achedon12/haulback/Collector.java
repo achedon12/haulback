@@ -54,9 +54,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Machine a etats du bot : recolter -> deposer -> (construire) -> rentrer au point A.
- * Tout le deplacement, le minage et la construction sont delegues a Baritone ;
- * cette classe decide quoi faire et quand, et gere la survie (manger, fuir, rentrer).
+ * Bot state machine: gather -> store -> (build) -> return to point A.
+ * All movement, mining and building is delegated to Baritone;
+ * this class decides what to do and when, and handles survival (eat, flee, go home).
  */
 public final class Collector {
 
@@ -101,7 +101,7 @@ public final class Collector {
 	private boolean buildDone;
 	private boolean endedWell;
 
-	// suivi du minage
+	// mining tracking
 	private Set<Block> issuedMine = Set.of();
 	private int mineGiveUps;
 	private Vec3 stuckRef;
@@ -110,7 +110,7 @@ public final class Collector {
 	private boolean restAfterDeposit;
 	private boolean buildIssued;
 
-	// suivi du coffre
+	// chest tracking
 	private int pathRetries;
 	private int openTries;
 	private final Set<Integer> triedSlots = new HashSet<>();
@@ -118,13 +118,13 @@ public final class Collector {
 	private int withdrawn;
 	private int restockEmpty;
 
-	// suivi du repas
+	// eating tracking
 	private int foodAtStart;
 	private int eatAttempts;
 
 	private Collector() {}
 
-	// ------------------------------------------------------------------ API publique
+	// ------------------------------------------------------------------ public API
 
 	public Phase phase() {
 		return phase;
@@ -150,17 +150,17 @@ public final class Collector {
 		return chest;
 	}
 
-	/** Heure de depart (ms), pour le chrono du HUD. */
+	/** Start time (ms), for the HUD timer. */
 	public long startedAt() {
 		return startedAt;
 	}
 
-	/** Heure de fin (ms) de la derniere mission, 0 si aucune. */
+	/** End time (ms) of the last mission, 0 if none. */
 	public long endedAt() {
 		return endedAt;
 	}
 
-	/** Vrai si la derniere mission s'est terminee normalement. */
+	/** True if the last mission ended normally. */
 	public boolean endedWell() {
 		return endedWell;
 	}
@@ -169,10 +169,10 @@ public final class Collector {
 		return buildFile != null;
 	}
 
-	/** Ce qu'il faut faire apres l'inventaire des coffres : blocs a casser, puis etapes d'atelier. */
+	/** What to do after the chest survey: blocks to break, then workshop steps. */
 	public record MissionPlan(List<Target> targets, List<Materials.Step> steps) {}
 
-	/** Version simple : liste de cibles fixe, deduite du stock des coffres par {@link Target#deduct}. */
+	/** Simple version: fixed target list, minus the chest stock via {@link Target#deduct}. */
 	public void start(List<Target> newTargets, File schematic, BlockPos origin, Set<Item> schematicItems) {
 		List<Target> proto = new ArrayList<>();
 		for (Target t : newTargets) proto.add(t.copy());
@@ -188,8 +188,8 @@ public final class Collector {
 	}
 
 	/**
-	 * @param planner   calcule les cibles a partir du stock des coffres (lu au depart)
-	 * @param gather    vrai s'il y a quelque chose a recolter
+	 * @param planner   computes the targets from the chest stock (read at start)
+	 * @param gather    true if there is something to gather
 	 */
 	public void start(Function<Map<Item, Integer>, MissionPlan> planner, boolean gather, File schematic, BlockPos origin,
 					  Set<Item> schematicItems) {
@@ -220,7 +220,7 @@ public final class Collector {
 		snapshotInventory();
 		applyBaritoneSettings();
 		say(L.t("haulback.msg.start") + fmt(home) + ", " + chests.size() + (chests.size() > 1 ? L.t("haulback.msg.chests_dot") : L.t("haulback.msg.chest_dot")), ChatFormatting.GRAY);
-		// inventaire des coffres, du plus proche au plus loin
+		// survey the chests, nearest first
 		surveyQueue.clear();
 		surveyQueue.addAll(chests);
 		goChest(Visit.SURVEY);
@@ -232,7 +232,7 @@ public final class Collector {
 		return lastStart != null;
 	}
 
-	/** Relance la derniere mission lancee depuis l'interface. */
+	/** Restarts the last mission started from the interface. */
 	public boolean relaunch() {
 		if (lastStart == null) {
 			say(L.t("haulback.msg.no_last_mission"), ChatFormatting.RED);
@@ -243,13 +243,13 @@ public final class Collector {
 		return active();
 	}
 
-	/** Touche marche/arret : arrete si actif, sinon relance la derniere mission. */
+	/** Start/stop key: stops if running, otherwise restarts the last mission. */
 	public void toggle() {
 		if (active()) stop(L.t("haulback.msg.stopped_by_user"));
 		else relaunch();
 	}
 
-	/** Fin de l'inventaire des coffres : on deduit le stock et on prepare les etapes. */
+	/** End of the chest survey: subtract the stock and prepare the stages. */
 	private void finishSurvey() {
 		LocalPlayer p = mc.player;
 		Map<Item, Integer> stock = new HashMap<>(ChestCache.stockOf(chests));
@@ -265,7 +265,7 @@ public final class Collector {
 		}
 
 		stages.clear();
-		// pioche en fer / diamant si les blocs l'exigent : minerai + charbon, four, puis atelier
+		// iron / diamond pickaxe when the blocks require it: ore + coal, furnace, then workshop
 		int required = ToolCrafter.requiredTier(main);
 		int have = ToolCrafter.bestPickTier(p);
 		tools.extraSticks = 0;
@@ -311,13 +311,13 @@ public final class Collector {
 			finishReason = L.t("haulback.msg.all_in_stock");
 		}
 		stages.add(new Stage(StageKind.HOME, List.of(), List.of()));
-		// les cibles affichees d'emblee : celles de la recolte principale
+		// targets shown right away: those of the main gathering
 		targets.clear();
 		targets.addAll(main);
 		nextStage();
 	}
 
-	// ------------------------------------------------------------------ etapes
+	// ------------------------------------------------------------------ stages
 
 	private enum StageKind {TOOLS, GATHER, PRODUCE, BUILD, HOME}
 
@@ -332,7 +332,7 @@ public final class Collector {
 		return workshop;
 	}
 
-	/** Passe a l'etape suivante de la mission. */
+	/** Moves on to the next stage of the mission. */
 	private void nextStage() {
 		LocalPlayer p = mc.player;
 		stage = stages.poll();
@@ -388,7 +388,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ outils
+	// ------------------------------------------------------------------ tools
 
 	private final ToolCrafter tools = new ToolCrafter();
 
@@ -396,7 +396,7 @@ public final class Collector {
 		return tools;
 	}
 
-	/** Passe en phase "outils" si des outils manquent. Renvoie true si c'est le cas. */
+	/** Enters the "tools" phase if tools are missing. Returns true if so. */
 	private boolean enterToolsIfNeeded(LocalPlayer p) {
 		return enterToolsIfNeeded(p, targets);
 	}
@@ -435,10 +435,10 @@ public final class Collector {
 	private int fightTicks;
 
 	/**
-	 * Mode combat : si un monstre hostile s'approche, on met la tache en pause, on sort l'epee,
-	 * on se tourne vers lui et on frappe (en respectant la recharge), puis on reprend.
+	 * Combat mode: when a hostile mob gets close, the current task is paused, the sword is drawn,
+	 * the bot turns to face it and attacks (respecting the cooldown), then resumes.
 	 *
-	 * @return true si le combat a pris la main ce tick
+	 * @return true if combat took over this tick
 	 */
 	private boolean combat(LocalPlayer p) {
 		if (phase == Phase.IDLE || !HaulbackConfig.get().fight) return false;
@@ -454,16 +454,16 @@ public final class Collector {
 			if (p.containerMenu != p.inventoryMenu) p.closeContainer();
 			fightTicks = 0;
 			status = L.t("haulback.status.fighting") + m.getName().getString();
-			HaulbackClient.LOG.info("Combat : {} a {} blocs", m.getType().toShortString(), (int) m.distanceTo(p));
+			HaulbackClient.LOG.info("Combat: {} at {} blocks", m.getType().toShortString(), (int) m.distanceTo(p));
 		}
-		if (foe != m) HaulbackClient.LOG.info("Cible : {} a {} blocs", m.getType().toShortString(), (int) m.distanceTo(p));
+		if (foe != m) HaulbackClient.LOG.info("Target: {} at {} blocks", m.getType().toShortString(), (int) m.distanceTo(p));
 		foe = m;
 		fightTicks++;
 		selectSword(p);
 		double d = p.getEyePosition().distanceTo(m.getBoundingBox().getCenter());
 		IBaritone b = baritone();
 		if (d > 4.5) {
-			// tireur a distance : on fonce dessus (Baritone gere le chemin et le regard)
+			// ranged attacker: charge it (Baritone handles the path and the camera)
 			mc.options.keyUp.setDown(false);
 			mc.options.keyDown.setDown(false);
 			if (fightTicks % 20 == 1 || !b.getCustomGoalProcess().isActive()) {
@@ -473,7 +473,7 @@ public final class Collector {
 		}
 		if (b.getPathingBehavior().isPathing()) b.getPathingBehavior().cancelEverything();
 		boolean aimed = Look.towards(p, m.getBoundingBox().getCenter());
-		// avance vers le monstre s'il est un peu loin, recule devant un creeper qui gonfle
+		// step towards the mob if it is a bit far, back off from a swelling creeper
 		boolean creeperClose = m instanceof Creeper c && c.getSwellDir() > 0 && d < 3.5;
 		mc.options.keyUp.setDown(aimed && d > 2.8 && !creeperClose);
 		mc.options.keyDown.setDown(creeperClose);
@@ -486,7 +486,7 @@ public final class Collector {
 
 	private Mob nearestFoe(LocalPlayer p, double radius) {
 		AABB box = p.getBoundingBox().inflate(radius, 3, radius);
-		// les mobs neutres (endermen, piglins zombifies...) ne sont jamais provoques
+		// neutral mobs (endermen, zombified piglins...) are never provoked
 		List<Mob> mobs = mc.level.getEntitiesOfClass(Mob.class, box,
 				e -> e instanceof Enemy && !(e instanceof NeutralMob) && e.isAlive() && p.hasLineOfSight(e)
 						&& e.distanceTo(p) <= radius);
@@ -495,7 +495,7 @@ public final class Collector {
 		return mobs.get(0);
 	}
 
-	/** Tireurs (squelettes, strays, pillards, blazes...) qui nous voient, meme de loin. */
+	/** Ranged attackers (skeletons, strays, pillagers, blazes...) that can see us, even from afar. */
 	private Mob nearestRanged(LocalPlayer p, double radius) {
 		AABB box = p.getBoundingBox().inflate(radius, 6, radius);
 		List<Mob> mobs = mc.level.getEntitiesOfClass(Mob.class, box,
@@ -531,7 +531,7 @@ public final class Collector {
 		if (inv.getSelectedSlot() != sword) inv.setSelectedSlot(sword);
 	}
 
-	/** Fin du combat : on reprend la tache en cours la ou elle en etait. */
+	/** End of combat: resume the current task where it left off. */
 	private void endFight() {
 		foe = null;
 		fightTicks = 0;
@@ -564,7 +564,7 @@ public final class Collector {
 		say(why, ChatFormatting.YELLOW);
 	}
 
-	/** Appele par l'evenement Fabric quand le joueur casse un bloc. */
+	/** Called by the Fabric event when the player breaks a block. */
 	public void onBlockBroken(BlockState state) {
 		if (phase != Phase.MINING && phase != Phase.PICKUP && phase != Phase.EATING) return;
 		Block b = state.getBlock();
@@ -585,7 +585,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ boucle
+	// ------------------------------------------------------------------ main loop
 
 	public void tick() {
 		if (phase == Phase.IDLE) return;
@@ -615,7 +615,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ recolte
+	// ------------------------------------------------------------------ gathering
 
 	private void enterMining() {
 		setPhase(Phase.MINING);
@@ -689,7 +689,7 @@ public final class Collector {
 		}
 		status = L.t("haulback.status.gathering") + summary();
 
-		// detection de blocage : pas bouge de 2 blocs en 60 s
+		// stuck detection: has not moved 2 blocks in 60 s
 		if (stuckRef == null || p.position().distanceTo(stuckRef) > 2) {
 			stuckRef = p.position();
 			stuckTicks = 0;
@@ -714,12 +714,12 @@ public final class Collector {
 		return done + " / " + total;
 	}
 
-	// ------------------------------------------------------------------ ramassage
+	// ------------------------------------------------------------------ pickup
 
 	private Visit pickupThen;
 	private ItemEntity pickupTarget;
 
-	/** Avant de repartir, ramasse les objets tombes autour (la derniere buche, etc.). */
+	/** Before leaving, pick up nearby drops (the last log, etc.). */
 	private void startPickup(Visit then) {
 		baritone().getPathingBehavior().cancelEverything();
 		pickupThen = then;
@@ -737,7 +737,7 @@ public final class Collector {
 			AABB box = p.getBoundingBox().inflate(12, 6, 12);
 			List<ItemEntity> items = mc.level.getEntitiesOfClass(ItemEntity.class, box, e -> e.isAlive());
 			if (items.isEmpty()) {
-				// laisse le temps au dernier objet casse d'apparaitre et de tomber
+				// give the last broken block's drop time to spawn and fall
 				if (ticks > 30) goChest(pickupThen);
 				return;
 			}
@@ -747,7 +747,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ repas
+	// ------------------------------------------------------------------ eating
 
 	private boolean needsFood(LocalPlayer p) {
 		return p.getFoodData().getFoodLevel() <= HaulbackConfig.get().eatBelowFood;
@@ -782,7 +782,7 @@ public final class Collector {
 				return;
 			}
 			if (slot >= Inventory.SELECTION_SIZE) {
-				// echange avec la derniere case de la barre rapide
+				// swap with the last hotbar slot
 				mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, slot, 8, ClickType.SWAP, p);
 				slot = 8;
 			}
@@ -823,7 +823,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ coffre
+	// ------------------------------------------------------------------ chests
 
 	private void goChest(Visit v) {
 		visit = v;
@@ -833,7 +833,7 @@ public final class Collector {
 				finishSurvey();
 			} else if (v == Visit.RESTOCK) {
 				if (buildItems.stream().anyMatch(it -> total(mc.player, it) > 0) && restockEmpty < 2) {
-					// rien dans les coffres, mais on a encore des blocs sur soi (ramasses) : on continue
+					// nothing in the chests, but we still carry blocks (picked up): keep going
 					restockEmpty++;
 					buildIssued = false;
 					setPhase(Phase.BUILDING);
@@ -859,7 +859,7 @@ public final class Collector {
 		};
 	}
 
-	/** Choix du coffre a visiter selon le but de la visite. */
+	/** Picks the chest to visit depending on the purpose of the visit. */
 	private BlockPos pickChest(Visit v) {
 		LocalPlayer p = mc.player;
 		Comparator<BlockPos> byDist = Comparator.comparingDouble(c -> c.distSqr(p.blockPosition()));
@@ -934,7 +934,7 @@ public final class Collector {
 			return;
 		}
 		if (menuSeen == 0) menuSeen = ticks;
-		if (ticks - menuSeen < 4) return; // laisse le serveur envoyer le contenu
+		if (ticks - menuSeen < 4) return; // let the server send the contents
 		if (visit == Visit.SURVEY) {
 			ChestCache.snapshot(chest, menu, p.getInventory());
 			p.closeContainer();
@@ -942,7 +942,7 @@ public final class Collector {
 			return;
 		}
 		status = visit == Visit.RESTOCK ? L.t("haulback.status.taking") : L.t("haulback.status.storing");
-		if (ticks % 2 != 0) return; // une action tous les 2 ticks, pour rester discret
+		if (ticks % 2 != 0) return; // one action every 2 ticks, to stay discreet
 		Slot next = nextDeposit(menu, p);
 		if (next != null) {
 			triedSlots.add(next.index);
@@ -958,7 +958,7 @@ public final class Collector {
 				return;
 			}
 		}
-		// tout ce qui pouvait l'etre a ete deplace : verifie s'il reste des choses a deposer
+		// everything movable has been moved: check whether anything is left to store
 		chestFull = remainingToDeposit(menu, p);
 		ChestCache.snapshot(chest, menu, p.getInventory());
 		p.closeContainer();
@@ -1091,7 +1091,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ construction
+	// ------------------------------------------------------------------ building
 
 	private void tickBuilding(LocalPlayer p) {
 		IBaritone b = baritone();
@@ -1115,8 +1115,8 @@ public final class Collector {
 		}
 		if (ticks < 40) return;
 		if (b.getBuilderProcess().isPaused()) {
-			// on a les blocs mais Baritone ne trouve pas d'endroit d'ou les poser dans le bon sens :
-			// on accepte une orientation approchee plutot que de bloquer
+			// we have the blocks but Baritone cannot find a spot to place them in the right orientation:
+			// accept the closest orientation instead of stalling
 			boolean haveItems = buildItems.stream().anyMatch(it -> total(p, it) > 0);
 			if (haveItems && !BaritoneAPI.getSettings().buildIgnoreDirection.value) {
 				say(L.t("haulback.msg.orientation_fallback"), ChatFormatting.GOLD);
@@ -1125,7 +1125,7 @@ public final class Collector {
 				ticks = 0;
 				return;
 			}
-			// des blocs mal poses ont pu etre casses et tomber : on les ramasse avant le coffre
+			// misplaced blocks may have been broken and dropped: pick them up before the chest
 			say(L.t("haulback.msg.build_pickup"), ChatFormatting.GRAY);
 			startPickup(Visit.RESTOCK);
 			return;
@@ -1137,7 +1137,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ retour
+	// ------------------------------------------------------------------ return home
 
 	private void goHome() {
 		baritone().getPathingBehavior().cancelEverything();
@@ -1170,7 +1170,7 @@ public final class Collector {
 		}
 	}
 
-	// ------------------------------------------------------------------ utilitaires
+	// ------------------------------------------------------------------ utilities
 
 	private void reset() {
 		targets.clear();
@@ -1229,7 +1229,7 @@ public final class Collector {
 		s.pauseMiningForFallingBlocks.value = true;
 		s.antiCheatCompatibility.value = true;
 		s.buildIgnoreDirection.value = false;
-		// comportement "humain" : la camera suit la marche et le minage, rotations lissees
+		// "human" behavior: the camera follows walking and mining, smoothed rotations
 		s.freeLook.value = false;
 		s.blockFreeLook.value = false;
 		s.smoothLook.value = true;

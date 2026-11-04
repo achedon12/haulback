@@ -1,0 +1,71 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug. Please check that it has not been reported already.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What the bot did, and what you expected instead. The HUD status text helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add two chests with J
+        2. Pick 64 oak logs in the Blocks tab
+        3. Start
+    validations:
+      required: true
+  - type: input
+    id: haulback
+    attributes:
+      label: Haulback version
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: baritone
+    attributes:
+      label: Baritone version
+      placeholder: baritone-api-fabric-1.17.0
+    validations:
+      required: true
+  - type: dropdown
+    id: launcher
+    attributes:
+      label: Launcher
+      options:
+        - Lunar Client
+        - Vanilla launcher
+        - Prism / MultiMC
+        - Modrinth App
+        - CurseForge App
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Singleplayer
+        - Multiplayer server
+    validations:
+      required: true
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods
+      description: The list of other mods installed, or the modpack name.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of `logs/latest.log` (or the crash report). It will be formatted automatically.
+      render: shell

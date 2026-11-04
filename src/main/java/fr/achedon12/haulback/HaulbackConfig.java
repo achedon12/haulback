@@ -11,36 +11,36 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Reglages persistants, stockes dans config/haulback.json. */
+/** Persistent settings, stored in config/haulback.json. */
 public final class HaulbackConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("haulback.json");
 
-	/** Ancien champ (un seul coffre), migre vers {@link #chests}. */
+	/** Legacy field (single chest), migrated to {@link #chests}. */
 	public int[] chest;
-	/** Coffres de depot / de stock. */
+	/** Storage / stock chests. */
 	public List<int[]> chests = new ArrayList<>();
-	/** Outils a fabriquer s'ils manquent (un outil deja present n'est jamais refabrique). */
+	/** Tools to craft when missing (a tool already present is never crafted again). */
 	public boolean toolPickaxe = true;
 	public boolean toolAxe = true;
 	public boolean toolSword = true;
 	public boolean toolShovel = false;
-	/** Materiau des outils fabriques : 0 = bois, 1 = pierre. */
+	/** Material of crafted tools: 0 = wood, 1 = stone. */
 	public int toolTier = 1;
-	/** Se defendre contre les monstres. */
+	/** Fight hostile mobs. */
 	public boolean fight = true;
 
-	/** Atelier pose par le bot (etabli et fours), reutilise d'une mission a l'autre. */
+	/** Workshop placed by the bot (crafting table and furnaces), reused from one mission to the next. */
 	public int[] workshopTable;
 	public List<int[]> workshopFurnaces = new ArrayList<>();
 
-	/** Rayon maximum autour du point de depart, en blocs. */
+	/** Maximum radius around the starting point, in blocks. */
 	public int maxRadius = 192;
-	/** En dessous de ces PV (sur 20), le bot rentre a la base. */
+	/** Below this health (out of 20), the bot goes home. */
 	public int retreatHealth = 10;
-	/** En dessous de ce niveau de faim (sur 20), le bot mange s'il a de quoi. */
+	/** Below this hunger level (out of 20), the bot eats if it has food. */
 	public int eatBelowFood = 14;
-	/** Nombre de blocs "jetables" (terre, pierre...) gardes pour que Baritone puisse construire des ponts. */
+	/** Number of "throwaway" blocks (dirt, stone...) kept so Baritone can bridge. */
 	public int keepThrowaway = 64;
 
 	private static HaulbackConfig instance;
@@ -65,7 +65,7 @@ public final class HaulbackConfig {
 				}
 			}
 		} catch (IOException | RuntimeException e) {
-			HaulbackClient.LOG.warn("Lecture de {} impossible, valeurs par defaut", FILE, e);
+			HaulbackClient.LOG.warn("Cannot read {}, using defaults", FILE, e);
 		}
 		return new HaulbackConfig();
 	}
@@ -75,7 +75,7 @@ public final class HaulbackConfig {
 			Files.createDirectories(FILE.getParent());
 			Files.writeString(FILE, GSON.toJson(this));
 		} catch (IOException e) {
-			HaulbackClient.LOG.warn("Ecriture de {} impossible", FILE, e);
+			HaulbackClient.LOG.warn("Cannot write {}", FILE, e);
 		}
 	}
 
@@ -87,13 +87,13 @@ public final class HaulbackConfig {
 		return out;
 	}
 
-	/** Premier coffre (ou null). */
+	/** First chest (or null). */
 	public BlockPos chestPos() {
 		List<BlockPos> l = chestList();
 		return l.isEmpty() ? null : l.get(0);
 	}
 
-	/** Remplace la liste par un seul coffre. */
+	/** Replaces the list with a single chest. */
 	public void setChest(BlockPos pos) {
 		chests.clear();
 		if (pos != null) chests.add(new int[]{pos.getX(), pos.getY(), pos.getZ()});
@@ -101,10 +101,10 @@ public final class HaulbackConfig {
 	}
 
 	/**
-	 * Ajoute le coffre s'il n'est pas dans la liste, le retire sinon.
-	 * {@code partner} est l'autre moitie d'un coffre double (ou null) : elle compte comme le meme coffre.
+	 * Adds the chest if it is not in the list, removes it otherwise.
+	 * {@code partner} is the other half of a double chest (or null): it counts as the same chest.
 	 *
-	 * @return true si le coffre a ete ajoute
+	 * @return true if the chest was added
 	 */
 	public boolean toggleChest(BlockPos pos, BlockPos partner) {
 		List<BlockPos> l = chestList();

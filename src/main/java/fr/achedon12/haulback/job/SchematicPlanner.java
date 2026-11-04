@@ -13,14 +13,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Plan complet pour un schematic : matieres premieres a recolter + etapes d'atelier
- * (fabrications et cuissons), en comptant le combustible, l'etabli et les fours.
+ * Full plan for a schematic: raw materials to gather + workshop steps
+ * (crafting and smelting), counting fuel, the crafting table and the furnaces.
  */
 public final class SchematicPlanner {
 	private SchematicPlanner() {}
 
 	public static Collector.MissionPlan plan(Map<Item, Integer> wanted, Set<Item> forced, boolean buildOnly, Map<Item, Integer> stock) {
-		// 1er passage : combien de cuissons ?
+		// 1st pass: how many smelts?
 		Materials.Plan first = Materials.resolve(wanted, forced, new HashMap<>(stock));
 		int smelts = first.smeltCount();
 		boolean crafts = first.steps.stream().anyMatch(s -> !s.smelt());
@@ -39,7 +39,7 @@ public final class SchematicPlanner {
 		Materials.Plan plan = Materials.resolve(all, forced, new HashMap<>(stock));
 		List<Materials.Step> steps = new ArrayList<>();
 		for (Materials.Step s : plan.steps) {
-			// le materiel d'atelier est fabrique a la demande par l'atelier lui-meme
+			// workshop equipment is crafted on demand by the workshop itself
 			if (s.item() == Items.CRAFTING_TABLE || s.item() == Items.FURNACE) continue;
 			steps.add(s);
 		}

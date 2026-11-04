@@ -16,14 +16,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Transforme une liste d'objets voulus (ex. issue d'un schematic) en blocs a miner
- * dans le monde, en remontant les recettes courantes (planches -> buches, verre -> sable...).
- * Ce n'est pas un moteur de recettes complet : ce qui n'est pas connu est classe "a recuperer
- * soi-meme", et l'utilisateur peut forcer la recherche directe dans le monde.
+ * Turns a list of wanted items (e.g. from a schematic) into blocks to mine
+ * in the world, following common recipes back (planks -> logs, glass -> sand...).
+ * It is not a full recipe engine: anything unknown is listed as "provide yourself",
+ * and the user can force a direct search in the world.
  */
 public final class Materials {
 
-	/** Une ligne affichable : objet + quantite + remarque. */
+	/** A displayable line: item + amount + note. */
 	public record Line(Item item, int count, String note) {
 		public ItemStack stack() {
 			return new ItemStack(item);
@@ -31,15 +31,15 @@ public final class Materials {
 	}
 
 	/**
-	 * Etape de transformation a faire a l'atelier (dans l'ordre : ingredients d'abord).
+	 * A processing step for the workshop (in order: ingredients first).
 	 *
-	 * @param inputs quantite de chaque ingredient par objet produit
+	 * @param inputs amount of each ingredient per produced item
 	 */
 	public record Step(Item item, int count, boolean smelt, Map<Item, Double> inputs) {}
 
-	/** Resultat de la resolution. */
+	/** Result of the resolution. */
 	public static final class Plan {
-		/** Fabrications et cuissons, dans l'ordre ou les faire. */
+		/** Crafting and smelting steps, in the order to run them. */
 		public final List<Step> steps = new ArrayList<>();
 
 		public int smeltCount() {
@@ -51,7 +51,7 @@ public final class Materials {
 		public final List<Target> targets = new ArrayList<>();
 		public final List<Line> toCraft = new ArrayList<>();
 		public final List<Line> manual = new ArrayList<>();
-		/** Ce qui est deja dans les coffres et a ete deduit. */
+		/** What is already in the chests and was subtracted. */
 		public final List<Line> fromStock = new ArrayList<>();
 	}
 
@@ -66,7 +66,7 @@ public final class Materials {
 
 	private static final Map<String, Terminal> TERMINALS = new LinkedHashMap<>();
 	private static final Map<String, Recipe> RECIPES = new LinkedHashMap<>();
-	/** Blocs naturels qui se ramassent tels quels a la main ou avec l'outil adapte. */
+	/** Natural blocks that drop themselves by hand or with the right tool. */
 	private static final Set<String> NATURAL = Set.of(
 			"coarse_dirt", "rooted_dirt", "sand", "red_sand", "gravel", "andesite", "diorite", "granite", "tuff",
 			"calcite", "netherrack", "end_stone", "basalt", "smooth_basalt", "blackstone", "soul_sand", "soul_soil",
@@ -92,8 +92,8 @@ public final class Materials {
 		terminal("snowball", Items.SNOWBALL, 4, Blocks.SNOW_BLOCK);
 		terminal("glowstone_dust", Items.GLOWSTONE_DUST, 3, Blocks.GLOWSTONE);
 
-		String smelt = "à cuire";
-		String craft = "à fabriquer";
+		String smelt = "smelt";
+		String craft = "craft";
 		recipe("stone", smelt, "cobblestone", 1);
 		recipe("smooth_stone", smelt, "stone", 1);
 		recipe("stone_bricks", craft, "stone", 1);
@@ -166,15 +166,15 @@ public final class Materials {
 	private static void wood(String w, String log, String wood) {
 		TERMINALS.put(log, new Terminal(item(log), Set.of(block(log)), 1));
 		String planks = w + "_planks";
-		recipe(planks, "à fabriquer", log, 0.25);
-		recipe(wood, "à fabriquer", log, 4.0 / 3);
-		recipe(w + "_fence", "à fabriquer", planks, 5.0 / 3);
-		recipe(w + "_fence_gate", "à fabriquer", planks, 4);
-		recipe(w + "_door", "à fabriquer", planks, 2);
-		recipe(w + "_trapdoor", "à fabriquer", planks, 3);
-		recipe(w + "_button", "à fabriquer", planks, 1);
-		recipe(w + "_pressure_plate", "à fabriquer", planks, 2);
-		recipe(w + "_sign", "à fabriquer", planks, 13.0 / 6);
+		recipe(planks, "craft", log, 0.25);
+		recipe(wood, "craft", log, 4.0 / 3);
+		recipe(w + "_fence", "craft", planks, 5.0 / 3);
+		recipe(w + "_fence_gate", "craft", planks, 4);
+		recipe(w + "_door", "craft", planks, 2);
+		recipe(w + "_trapdoor", "craft", planks, 3);
+		recipe(w + "_button", "craft", planks, 1);
+		recipe(w + "_pressure_plate", "craft", planks, 2);
+		recipe(w + "_sign", "craft", planks, 13.0 / 6);
 	}
 
 	private static void terminal(String key, Item display, double yield, Block... sources) {
@@ -212,7 +212,7 @@ public final class Materials {
 		final Map<Item, Map<Item, Double>> stepInputs = new LinkedHashMap<>();
 
 		void step(Item out, double qty, boolean smelt, Map<Item, Double> inputs) {
-			// re-inserer en fin de liste garde l'ordre "ingredients d'abord"
+			// re-inserting at the end keeps the "ingredients first" order
 			Double prev = stepQty.remove(out);
 			stepQty.put(out, (prev == null ? 0 : prev) + qty);
 			stepSmelt.put(out, smelt);
@@ -223,7 +223,7 @@ public final class Materials {
 		final Map<Item, Integer> stock = new LinkedHashMap<>();
 		final Map<Item, Integer> usedStock = new LinkedHashMap<>();
 
-		/** Consomme le stock disponible pour {@code item} ; renvoie la quantite restant a obtenir. */
+		/** Consumes the available stock for {@code item}; returns the amount still to obtain. */
 		double consume(Item item, double qty) {
 			int have = stock.getOrDefault(item, 0);
 			if (have <= 0 || qty <= 0) return qty;
@@ -235,16 +235,16 @@ public final class Materials {
 	}
 
 	/**
-	 * @param wanted objets voulus et quantites
-	 * @param forceDirect objets que l'utilisateur veut chercher tels quels dans le monde
+	 * @param wanted wanted items and amounts
+	 * @param forceDirect items the user wants searched as is in the world
 	 */
 	public static Plan resolve(Map<Item, Integer> wanted, Set<Item> forceDirect) {
 		return resolve(wanted, forceDirect, Map.of());
 	}
 
 	/**
-	 * @param stock contenu connu des coffres : il est deduit a chaque niveau (objet final,
-	 *              intermediaires comme les planches, puis matieres premieres comme les buches)
+	 * @param stock known chest contents: subtracted at every level (final item,
+	 *              intermediates such as planks, then raw materials such as logs)
 	 */
 	public static Plan resolve(Map<Item, Integer> wanted, Set<Item> forceDirect, Map<Item, Integer> stock) {
 		Acc acc = new Acc();
@@ -269,14 +269,14 @@ public final class Materials {
 		for (Map.Entry<Item, Integer> e : acc.forcedDirect.entrySet()) {
 			Block b = Block.byItem(e.getKey());
 			if (b == Blocks.AIR) {
-				plan.manual.add(new Line(e.getKey(), e.getValue(), "pas un bloc"));
+				plan.manual.add(new Line(e.getKey(), e.getValue(), "not a block"));
 				continue;
 			}
 			plan.targets.add(new Target(e.getKey().getName().getString(), new ItemStack(e.getKey()), Set.of(b), e.getValue()));
 		}
 		acc.craft.forEach((it, n) -> plan.toCraft.add(new Line(it, n, acc.craftNote.getOrDefault(it, ""))));
 		acc.stepQty.forEach((it, q) -> plan.steps.add(new Step(it, (int) Math.ceil(q - 1e-9), acc.stepSmelt.get(it), acc.stepInputs.get(it))));
-		acc.usedStock.forEach((it, n) -> plan.fromStock.add(new Line(it, n, "deja dans les coffres")));
+		acc.usedStock.forEach((it, n) -> plan.fromStock.add(new Line(it, n, "in stock")));
 		acc.manual.forEach((it, n) -> plan.manual.add(new Line(it, n, "")));
 		return plan;
 	}
@@ -284,7 +284,7 @@ public final class Materials {
 	private static Terminal terminalFor(String key) {
 		Terminal t = TERMINALS.get(key);
 		if (t != null) return t;
-		// bloc naturel qui se ramasse tel quel
+		// natural block that drops itself
 		return new Terminal(item(key), Set.of(block(key)), 1);
 	}
 
@@ -300,7 +300,7 @@ public final class Materials {
 			if (depth == 0) {
 				acc.manual.merge(item, (int) Math.ceil(qty), Integer::sum);
 			} else {
-				// un ingredient intermediaire inconnu : on le signale aussi
+				// an unknown intermediate ingredient: report it too
 				acc.manual.merge(item, (int) Math.ceil(qty), Integer::sum);
 			}
 		}
@@ -323,7 +323,7 @@ public final class Materials {
 				inputs.put(item(ing.item), ing.ratio);
 				resolveItem(acc, item(ing.item), qty * ing.ratio, depth + 1);
 			}
-			acc.step(item(path), qty, r.note.contains("cuire"), inputs);
+			acc.step(item(path), qty, r.note.equals("smelt"), inputs);
 			if (depth == 0) {
 				Item it = item(path);
 				acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);
@@ -331,7 +331,7 @@ public final class Materials {
 			}
 			return true;
 		}
-		// escaliers / dalles / murets : on remonte au bloc de base
+		// stairs / slabs / walls: go back to the base block
 		String[][] shapes = {{"_stairs", "1.5"}, {"_slab", "0.5"}, {"_wall", "1"}};
 		for (String[] s : shapes) {
 			if (!path.endsWith(s[0])) continue;
@@ -343,7 +343,7 @@ public final class Materials {
 				if (depth == 0) {
 					Item it = item(path);
 					acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);
-					acc.craftNote.put(it, "à fabriquer");
+					acc.craftNote.put(it, "craft");
 				}
 				return true;
 			}
