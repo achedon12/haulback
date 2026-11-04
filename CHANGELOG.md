@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- German and Spanish translations.
+
 ### Changed
 - Code comments, logs and test messages are now in English.
 

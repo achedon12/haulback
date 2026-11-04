@@ -68,7 +68,7 @@ Haulback is **client-side only**: nothing to install on the server.
 
 Keys are rebindable in Options > Controls. The `/haulback` command (alias `/hb`) offers `start`, `stop`, `toggle`, `status`, `open` and `chest add|list|clear`.
 
-Schematics go into the game's `schematics` folder (**Folder** button in the interface). The interface is available in English and French and follows your game language. See the [wiki](https://github.com/achedon12/haulback/wiki) for a full walkthrough.
+Schematics go into the game's `schematics` folder (**Folder** button in the interface). The interface is available in English, French, German and Spanish and follows your game language. See the [wiki](https://github.com/achedon12/haulback/wiki) for a full walkthrough.
 
 ## Known limitations
 
