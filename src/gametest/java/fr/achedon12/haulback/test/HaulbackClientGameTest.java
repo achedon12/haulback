@@ -45,6 +45,15 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 	}
 
 	private void run(ClientGameTestContext ctx) throws Exception {
+		// light settings: CI runners render in software, a heavy first frame times the world load out
+		ctx.runOnClient(mc -> {
+			mc.options.renderDistance().set(2);
+			mc.options.simulationDistance().set(5);
+			mc.options.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
+			mc.options.particles().set(net.minecraft.server.level.ParticleStatus.MINIMAL);
+			mc.options.entityShadows().set(false);
+			mc.options.framerateLimit().set(30);
+		});
 		try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
 			sp.getClientWorld().waitForChunksRender();
 			for (String cmd : List.of("difficulty peaceful", "gamemode survival @a", "time set day",

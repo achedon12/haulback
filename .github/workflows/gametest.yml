@@ -23,7 +23,9 @@ jobs:
       - name: Extract Baritone's nested jar for the dev runtime
         run: unzip -j libs/baritone-api-fabric-1.17.0.jar META-INF/jars/nether-pathfinder-1.6.jar -d libs
       - name: Run in-game tests
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 854x480x24" ./gradlew runClientGameTest --no-daemon
       - uses: actions/upload-artifact@v4
         if: always()
         with:
