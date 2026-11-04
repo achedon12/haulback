@@ -86,11 +86,19 @@ To fix a translation, edit the value in the matching file.
 
 ## Pull requests
 
-1. Fork the repository and create a branch from `main`.
+1. Fork the repository and create a branch from `develop`.
 2. Make your change, with a test scenario when it changes the bot's behavior.
 3. Run `./gradlew build` (and `./gradlew runClientGameTest` for behavior changes).
 4. Update `CHANGELOG.md` under **Unreleased**.
 5. Open the PR and fill in the template.
+
+## Branches and releases
+
+- `develop` is the default branch: pull requests target it.
+- `main` holds released code. Merging `develop` into `main` publishes a release automatically:
+  the [release workflow](.github/workflows/release.yml) builds the jar, creates the tag and the GitHub release, and uploads the file to CurseForge.
+- To release, bump `mod_version` in `gradle.properties` and move the **Unreleased** notes of `CHANGELOG.md` under a new version heading, on `develop`, then merge into `main`.
+- If the tag for `mod_version` already exists, a push to `main` publishes nothing.
 
 ## Reporting bugs
 

@@ -9,6 +9,7 @@ Pick some blocks or a schematic: it gathers everything, processes it, stores it 
 
 <p align="center">
 <a href="https://github.com/achedon12/haulback/releases"><img src="https://img.shields.io/github/downloads/achedon12/haulback/total?label=GitHub%20downloads&color=f2a93b&style=flat-square" alt="GitHub downloads"></a>
+<a href="https://www.curseforge.com/minecraft/mc-mods/haulback"><img src="https://img.shields.io/curseforge/dt/1783102?label=CurseForge%20downloads&color=f16436&style=flat-square" alt="CurseForge downloads"></a>
 <a href="https://github.com/achedon12/haulback/releases/latest"><img src="https://img.shields.io/github/v/release/achedon12/haulback?label=release&color=5cc8ff&style=flat-square" alt="Latest release"></a>
 </p>
 

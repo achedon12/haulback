@@ -1,0 +1,139 @@
+name: release
+
+# Every push to main publishes the version declared in gradle.properties (mod_version),
+# unless a tag for it already exists:
+#   1. build the jar
+#   2. create the tag and the GitHub release, with the notes from CHANGELOG.md
+#   3. upload the jar to CurseForge (needs the CURSEFORGE_TOKEN secret)
+#   4. upload the jar to Modrinth (only if the MODRINTH_TOKEN secret and MODRINTH_PROJECT_ID variable are set)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CURSEFORGE_PROJECT_ID: "1783102"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: v
+        run: |
+          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          mc=$(grep '^minecraft_version=' gradle.properties | cut -d= -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "mc=$mc" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              # manual run: re-upload the existing version to CurseForge / Modrinth
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "Tag v$version already exists: nothing to publish. Bump mod_version to release."
+            fi
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.v.outputs.publish == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build
+        if: steps.v.outputs.publish == 'true'
+        run: ./gradlew build --no-daemon
+
+      - name: Release notes from CHANGELOG.md
+        if: steps.v.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on {print}
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $VERSION" >&2
+            exit 1
+          fi
+          {
+            echo "**Install alongside:** Fabric API and [baritone-api-fabric-1.17.0.jar](https://github.com/cabaletta/baritone/releases/tag/v1.17.0) (the API build, not standalone)."
+            echo
+            cat notes.md
+          } > release-notes.md
+          echo "JAR=$(ls build/libs/haulback-*.jar | grep -v sources | head -1)" >> "$GITHUB_ENV"
+
+      - name: GitHub release
+        if: steps.v.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: gh release create "$TAG" "$JAR" --title "Haulback $VERSION" --notes-file release-notes.md --target "$GITHUB_SHA"
+
+      - name: CurseForge
+        if: steps.v.outputs.publish == 'true'
+        env:
+          TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          MC: ${{ steps.v.outputs.mc }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CURSEFORGE_TOKEN is not set, skipping CurseForge"
+            exit 0
+          fi
+          versions=$(curl -fsS -H "X-Api-Token: $TOKEN" https://minecraft.curseforge.com/api/game/versions)
+          ids=$(echo "$versions" | jq -c --arg mc "$MC" '[.[] | select(.name == $mc or .name == "Fabric" or .name == "Client" or .name == "Java 21") | .id] | unique')
+          echo "CurseForge game version ids: $ids"
+          metadata=$(jq -n \
+            --arg changelog "$(cat release-notes.md)" \
+            --arg name "Haulback $VERSION" \
+            --argjson versions "$ids" \
+            '{changelog: $changelog, changelogType: "markdown", displayName: $name, releaseType: "release", gameVersions: $versions,
+              relations: {projects: [{slug: "fabric-api", type: "requiredDependency"}]}}')
+          curl -fsS -H "X-Api-Token: $TOKEN" \
+            -F "metadata=$metadata" \
+            -F "file=@$JAR" \
+            "https://minecraft.curseforge.com/api/projects/$CURSEFORGE_PROJECT_ID/upload-file"
+
+      - name: Modrinth
+        if: steps.v.outputs.publish == 'true'
+        env:
+          TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          PROJECT: ${{ vars.MODRINTH_PROJECT_ID }}
+          MC: ${{ steps.v.outputs.mc }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$PROJECT" ]; then
+            echo "Modrinth is not configured (MODRINTH_TOKEN secret / MODRINTH_PROJECT_ID variable), skipping"
+            exit 0
+          fi
+          data=$(jq -n \
+            --arg project "$PROJECT" --arg name "Haulback $VERSION" --arg number "$VERSION" --arg mc "$MC" \
+            --arg changelog "$(cat release-notes.md)" --arg file "$(basename "$JAR")" \
+            '{project_id: $project, name: $name, version_number: $number, changelog: $changelog,
+              game_versions: [$mc], loaders: ["fabric"], version_type: "release", featured: true,
+              dependencies: [{project_id: "P7dR8mSH", dependency_type: "required"}],
+              file_parts: ["file"], primary_file: "file"}')
+          curl -fsS -H "Authorization: $TOKEN" -H "User-Agent: achedon12/haulback release workflow" \
+            -F "data=$data" -F "file=@$JAR" \
+            https://api.modrinth.com/v2/version
