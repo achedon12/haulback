@@ -51,7 +51,14 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-java@v4
+      - name: Use the tagged sources when re-uploading an existing version
+        if: steps.v.outputs.exists == 'true' && steps.v.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          git checkout --quiet "$TAG"
+
+      - uses: actions/setup-java@v5
         if: steps.v.outputs.publish == 'true'
         with:
           distribution: temurin
@@ -101,8 +108,19 @@ jobs:
             echo "::warning::CURSEFORGE_TOKEN is not set, skipping CurseForge"
             exit 0
           fi
-          versions=$(curl -fsS -H "X-Api-Token: $TOKEN" https://minecraft.curseforge.com/api/game/versions)
-          ids=$(echo "$versions" | jq -c --arg mc "$MC" '[.[] | select(.name == $mc or .name == "Fabric" or .name == "Client" or .name == "Java 21") | .id] | unique')
+          api=https://minecraft.curseforge.com/api
+          types=$(curl -fsS -H "X-Api-Token: $TOKEN" "$api/game/version-types")
+          versions=$(curl -fsS -H "X-Api-Token: $TOKEN" "$api/game/versions")
+          # "1.21.11" -> version type "minecraft-1-21"
+          mcslug="minecraft-$(echo "$MC" | cut -d. -f1-2 | tr . -)"
+          ids=$(jq -nc --argjson t "$types" --argjson v "$versions" --arg mc "$MC" --arg mcslug "$mcslug" '
+            def tid(s): [$t[] | select(.slug == s) | .id][0];
+            [ $v[] | select(
+                (.gameVersionTypeID == tid($mcslug) and .name == $mc) or
+                (.gameVersionTypeID == tid("modloader") and .name == "Fabric") or
+                (.gameVersionTypeID == tid("environment") and .name == "Client") or
+                (.gameVersionTypeID == tid("java") and .name == "Java 21")
+              ) | .id ] | unique')
           echo "CurseForge game version ids: $ids"
           metadata=$(jq -n \
             --arg changelog "$(cat release-notes.md)" \
@@ -110,7 +128,7 @@ jobs:
             --argjson versions "$ids" \
             '{changelog: $changelog, changelogType: "markdown", displayName: $name, releaseType: "release", gameVersions: $versions,
               relations: {projects: [{slug: "fabric-api", type: "requiredDependency"}]}}')
-          curl -fsS -H "X-Api-Token: $TOKEN" \
+          curl -sS --fail-with-body -H "X-Api-Token: $TOKEN" \
             -F "metadata=$metadata" \
             -F "file=@$JAR" \
             "https://minecraft.curseforge.com/api/projects/$CURSEFORGE_PROJECT_ID/upload-file"
@@ -134,6 +152,6 @@ jobs:
               game_versions: [$mc], loaders: ["fabric"], version_type: "release", featured: true,
               dependencies: [{project_id: "P7dR8mSH", dependency_type: "required"}],
               file_parts: ["file"], primary_file: "file"}')
-          curl -fsS -H "Authorization: $TOKEN" -H "User-Agent: achedon12/haulback release workflow" \
+          curl -sS --fail-with-body -H "Authorization: $TOKEN" -H "User-Agent: achedon12/haulback release workflow" \
             -F "data=$data" -F "file=@$JAR" \
             https://api.modrinth.com/v2/version
