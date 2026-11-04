@@ -131,7 +131,7 @@ jobs:
             '{changelog: $changelog, changelogType: "markdown", displayName: $name, releaseType: "release", gameVersions: $versions,
               relations: {projects: [{slug: "fabric-api", type: "requiredDependency"}]}}')
           curl -sS --fail-with-body -H "X-Api-Token: $TOKEN" \
-            -F "metadata=$metadata" \
+            --form-string "metadata=$metadata" \
             -F "file=@$JAR" \
             "https://minecraft.curseforge.com/api/projects/$CURSEFORGE_PROJECT_ID/upload-file"
 
@@ -155,5 +155,5 @@ jobs:
               dependencies: [{project_id: "P7dR8mSH", dependency_type: "required"}],
               file_parts: ["file"], primary_file: "file"}')
           curl -sS --fail-with-body -H "Authorization: $TOKEN" -H "User-Agent: achedon12/haulback release workflow" \
-            -F "data=$data" -F "file=@$JAR" \
+            --form-string "data=$data" -F "file=@$JAR" \
             https://api.modrinth.com/v2/version
