@@ -52,6 +52,7 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 				sp.getServer().runCommand(cmd);
 			}
 			ctx.waitTicks(20);
+			checkPlanning();
 			BlockPos home = sp.getServer().computeOnServer(s -> s.getPlayerList().getPlayers().get(0).blockPosition());
 			BlockPos chest = home.offset(3, 0, 1);
 			sp.getServer().runOnServer(s -> {
@@ -281,6 +282,25 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			System.out.println("[HAULBACK-TEST] skeleton: left=" + skel + " hp=" + hp2);
 			ctx.waitFor(mc -> !Collector.get().active(), 20 * 120);
 			if (skel > 0) throw new AssertionError("The skeleton is still alive");
+		}
+	}
+
+	/** Planning only: the recipe table resolves the newer vanilla families down to raw materials. */
+	private static void checkPlanning() {
+		Materials.Plan p = Materials.resolve(Map.of(Items.CUT_COPPER, 4, Items.MUD_BRICKS, 4, Items.LIGHT_BLUE_STAINED_GLASS, 8), Set.of());
+		List<String> targets = p.targets.stream().map(t -> t.stockItem == null ? t.label : t.label).toList();
+		List<Item> steps = p.steps.stream().map(Materials.Step::item).toList();
+		List<Item> manual = p.manual.stream().map(Materials.Line::item).toList();
+		System.out.println("[HAULBACK-TEST] planning: targets=" + targets + " steps=" + steps + " manual=" + manual);
+		boolean copper = p.targets.stream().anyMatch(t -> t.sources.contains(Blocks.COPPER_ORE));
+		boolean mud = p.targets.stream().anyMatch(t -> t.sources.contains(Blocks.MUD));
+		boolean sand = p.targets.stream().anyMatch(t -> t.sources.contains(Blocks.SAND));
+		if (!copper || !mud || !sand) throw new AssertionError("Planning did not reach copper ore, mud and sand: " + targets);
+		if (!steps.contains(Items.CUT_COPPER) || !steps.contains(Items.MUD_BRICKS) || !steps.contains(Items.LIGHT_BLUE_STAINED_GLASS)) {
+			throw new AssertionError("Missing workshop steps: " + steps);
+		}
+		if (!manual.contains(Items.WHEAT) || !manual.contains(Items.LIGHT_BLUE_DYE)) {
+			throw new AssertionError("Wheat and dye should be listed as provide-yourself: " + manual);
 		}
 	}
 
