@@ -1,75 +1,82 @@
-<p align="center"><img src="icon.png" width="96" alt=""></p>
+<p align="center"><img src="icon.png" width="96" alt="Haulback icon"></p>
 
 <h1 align="center">Haulback</h1>
 
 <p align="center">
-Mod Fabric client pour Minecraft 1.21.11, basé sur <a href="https://github.com/cabaletta/baritone">Baritone</a>.<br>
-Choisis des blocs ou un schematic : il les récolte, les range dans tes coffres, construit si tu veux, puis revient au point de départ.
+A client-side Fabric mod for Minecraft 1.21.11, built on <a href="https://github.com/cabaletta/baritone">Baritone</a>.<br>
+Pick some blocks or a schematic: it gathers everything, processes it, stores it in your chests, builds if you want, then walks back to where it started.
+</p>
+
+<p align="center">
+<a href="https://achedon12.github.io/haulback/">Website</a> ·
+<a href="https://github.com/achedon12/haulback/wiki">Wiki</a> ·
+<a href="https://github.com/achedon12/haulback/releases">Download</a>
 </p>
 
 ---
 
-## Ce qu'il fait
+## Features
 
-- **Mode blocs** : choisis un ou plusieurs blocs dans une grille d'icônes et une quantité, le bot va les miner.
-- **Mode schematic** (`.litematic`, `.schem`, `.schematic`) : le mod lit la liste exacte des matériaux, remonte aux matières premières (planches vers bûches, verre vers sable, escaliers vers blocs de base...), puis les récolte.
-- **Construction** : après la récolte (ou directement), Baritone construit le schematic à l'endroit choisi en prenant les blocs dans tes coffres.
-- **Plusieurs coffres** : au départ, le bot fait le tour des coffres choisis, lit leur contenu et **déduit ce qui est déjà en stock**, y compris les intermédiaires (des planches en stock réduisent les bûches à couper).
-- **Outils** : s'il lui manque pioche, hache, épée ou pelle, il les fabrique (bûches, planches, bâtons, établi, pioche en bois, pierre, outils en pierre). Un outil déjà présent n'est jamais refait. Le choix des outils et du matériau se fait dans l'onglet Options.
-- **Survie** : il mange quand il a faim, rentre se soigner si ses PV baissent, se défend contre les monstres (y compris les squelettes qui tirent de loin) et ne provoque jamais les mobs neutres.
-- **Comportement naturel** : la caméra suit la marche et le minage, avec des rotations lissées.
-- **Retour au point A** à la fin, avec un rayon maximum pour ne jamais se perdre.
+- **Block mode**: choose one or more blocks from an icon grid, set a quantity, and the bot mines them.
+- **Schematic mode** (`.litematic`, `.schem`, `.schematic`): reads the exact bill of materials and walks the recipe tree down to raw resources (planks to logs, glass to sand, stairs to their base block...).
+- **Automatic workshop**: places a crafting table and furnaces next to your chests, smelts (glass, stone, bricks, ingots...) and crafts (planks, sticks, stairs, slabs, panes...) everything the build needs, with fuel handled for you.
+- **Building**: Baritone builds the schematic at the chosen origin, pulling blocks from your chests.
+- **Multiple chests**: before starting, the bot visits every selected chest, reads its contents and **subtracts what you already have**, intermediates included.
+- **Tools**: crafts whatever is missing (pickaxe, axe, sword, shovel), from wood up to stone. If the blocks require it, it mines iron and coal, smelts the ingots and crafts an iron pickaxe, then a diamond one. A tool already in the inventory is never crafted again.
+- **Survival**: eats when hungry, heads home to heal when health drops, fights hostile mobs (skeletons shooting from a distance included) and never provokes neutral mobs.
+- **Human-like movement**: the camera follows the path and the block being mined, with smoothed rotations.
+- **Always comes back** to the starting point, within a configurable maximum radius.
 
-## Captures
+## Screenshots
 
-| Choix des blocs | Schematic | Options |
+| Block picker | Schematic | Options |
 |---|---|---|
 | ![](docs/screenshots/blocs.png) | ![](docs/screenshots/schematic.png) | ![](docs/screenshots/options.png) |
 
-| HUD en récolte | Fabrication des outils | Fin de mission |
+| HUD while gathering | Crafting tools | Mission complete |
 |---|---|---|
 | ![](docs/screenshots/hud-recolte.png) | ![](docs/screenshots/hud-outils.png) | ![](docs/screenshots/hud-fin.png) |
 
 ## Installation
 
-1. Fabric Loader 0.18.2+ et Fabric API pour Minecraft 1.21.11.
-2. [Baritone **API** Fabric 1.17.0](https://github.com/cabaletta/baritone/releases/tag/v1.17.0) : le fichier `baritone-api-fabric-1.17.0.jar`. La version « standalone » ne convient pas, Haulback a besoin de l'API.
-3. Le jar de Haulback depuis les [releases](https://github.com/achedon12/haulback/releases).
+1. Fabric Loader 0.18.2+ and Fabric API for Minecraft 1.21.11.
+2. [Baritone **API** for Fabric 1.17.0](https://github.com/cabaletta/baritone/releases/tag/v1.17.0): the `baritone-api-fabric-1.17.0.jar` file. The "standalone" build will not work, Haulback needs the API.
+3. The Haulback jar from the [releases](https://github.com/achedon12/haulback/releases).
 
-Les deux jars vont dans le dossier `mods`. Avec Lunar Client, ajoute-les au profil Fabric (dossier `mods/fabric-1.21.11` du profil).
+Both jars go into your `mods` folder. With Lunar Client, add them to your Fabric profile (`mods/fabric-1.21.11` inside the profile folder).
 
-Le mod est **uniquement côté client** : rien à installer sur le serveur.
+Haulback is **client-side only**: nothing to install on the server.
 
-## Utilisation
+## Usage
 
-| Touche | Action |
+| Key | Action |
 |---|---|
-| `H` | Ouvrir l'interface |
-| `J` | Ajouter ou retirer le coffre visé |
+| `H` | Open the interface |
+| `J` | Add or remove the chest you are looking at |
 
-1. Vise un coffre et appuie sur `J` (répète pour en ajouter d'autres).
-2. Ouvre l'interface avec `H`, choisis des blocs ou un schematic.
-3. Pour construire, place-toi à l'origine voulue et clique « Ma position ».
-4. Lance. Le HUD en haut à gauche suit la mission ; « Arrêter » dans l'interface (ou `#stop` de Baritone) l'interrompt.
+1. Look at a chest and press `J` (repeat to add more).
+2. Open the interface with `H`, pick blocks or a schematic.
+3. To build, stand where the schematic should start and click "Ma position".
+4. Start. The HUD in the top-left corner tracks the mission; "Arrêter" in the interface (or Baritone's `#stop`) cancels it.
 
-Les schematics se placent dans le dossier `schematics` du jeu (bouton « Dossier » dans l'interface).
+Schematics go into the game's `schematics` folder ("Dossier" button in the interface). The in-game interface is currently in French; see the [wiki](https://github.com/achedon12/haulback/wiki) for a full walkthrough.
 
-## Limites connues
+## Known limitations
 
-- Les blocs qui demandent une pioche en fer ou mieux (diamant, or, redstone...) exigent que tu aies déjà cette pioche : le bot ne fait pas encore fondre le fer.
-- La fabrication des blocs transformés (planches, verre, briques...) pour la construction reste à faire à la main : l'interface indique ce qu'il faut fabriquer.
-- Baritone mine les blocs qu'il trouve : sur un serveur partagé, il peut casser une construction faite des mêmes blocs. Garde un rayon raisonnable.
-- Un bot reste un bot : vérifie que les règles de ton serveur l'autorisent.
+- Netherite is out of scope: the bot stops at diamond tools.
+- Items that cannot be crafted or smelted from mined blocks (wool, dyes, mob drops...) are listed as "to provide yourself"; you can force a direct search for them.
+- Baritone mines whatever matching blocks it finds: on a shared server it may break a build made of the same blocks. Keep a sensible radius.
+- A bot is still a bot: check that your server's rules allow it.
 
-## Compiler
+## Building from source
 
 ```bash
-./gradlew build                # jar dans build/libs
-./gradlew runClientGameTest    # scénarios de bout en bout dans un vrai client
+./gradlew build                # jar in build/libs
+./gradlew runClientGameTest    # end-to-end scenarios in a real client
 ```
 
-Les tests en jeu couvrent : fabrication des outils sans rien au départ, récolte avec déduction du stock de deux coffres, construction d'un schematic, combat contre un zombie et un squelette.
+The in-game tests cover: crafting tools from an empty inventory, gathering with stock deduction across two chests, building a schematic, the automatic workshop (smelting and crafting), the iron pickaxe chain, and fighting a zombie and a skeleton.
 
-## Licence
+## License
 
-LGPL-3.0, comme Baritone.
+LGPL-3.0, like Baritone.
