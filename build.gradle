@@ -1,0 +1,58 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+}
+
+version = "${project.mod_version}+${project.minecraft_version}"
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "haulback-gametest"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// Baritone (API build) : a installer a cote du mod, non embarque.
+	modCompileOnly files("libs/baritone-api-fabric-${project.baritone_version}.jar")
+	modLocalRuntime files("libs/baritone-api-fabric-${project.baritone_version}.jar")
+	// jar imbrique dans Baritone, extrait seulement pour runClient (non versionne)
+	if (file("libs/nether-pathfinder-1.6.jar").exists()) {
+		localRuntime files("libs/nether-pathfinder-1.6.jar")
+	}
+}
+
+processResources {
+	inputs.property "version", project.version
+	filesMatching("fabric.mod.json") {
+		expand "version": inputs.properties.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_haulback" }
+	}
+}

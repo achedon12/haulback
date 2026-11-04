@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "haulback-gametest",
+  "version": "1.0.0",
+  "name": "Haulback game tests",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["fr.achedon12.haulback.test.HaulbackClientGameTest"]
+  },
+  "depends": { "haulback": "*" }
+}

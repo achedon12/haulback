@@ -1,0 +1,323 @@
+package fr.achedon12.haulback.job;
+
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Transforme une liste d'objets voulus (ex. issue d'un schematic) en blocs a miner
+ * dans le monde, en remontant les recettes courantes (planches -> buches, verre -> sable...).
+ * Ce n'est pas un moteur de recettes complet : ce qui n'est pas connu est classe "a recuperer
+ * soi-meme", et l'utilisateur peut forcer la recherche directe dans le monde.
+ */
+public final class Materials {
+
+	/** Une ligne affichable : objet + quantite + remarque. */
+	public record Line(Item item, int count, String note) {
+		public ItemStack stack() {
+			return new ItemStack(item);
+		}
+	}
+
+	/** Resultat de la resolution. */
+	public static final class Plan {
+		public final List<Target> targets = new ArrayList<>();
+		public final List<Line> toCraft = new ArrayList<>();
+		public final List<Line> manual = new ArrayList<>();
+		/** Ce qui est deja dans les coffres et a ete deduit. */
+		public final List<Line> fromStock = new ArrayList<>();
+	}
+
+	private record Terminal(Item display, Set<Block> sources, double yieldPerBlock) {}
+
+	private record Ingredient(String item, double ratio) {}
+
+	private record Recipe(List<Ingredient> ingredients, String note) {}
+
+	private static final String[] WOODS = {"oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak"};
+	private static final String[] STEMS = {"crimson", "warped"};
+
+	private static final Map<String, Terminal> TERMINALS = new LinkedHashMap<>();
+	private static final Map<String, Recipe> RECIPES = new LinkedHashMap<>();
+	/** Blocs naturels qui se ramassent tels quels a la main ou avec l'outil adapte. */
+	private static final Set<String> NATURAL = Set.of(
+			"coarse_dirt", "rooted_dirt", "sand", "red_sand", "gravel", "andesite", "diorite", "granite", "tuff",
+			"calcite", "netherrack", "end_stone", "basalt", "smooth_basalt", "blackstone", "soul_sand", "soul_soil",
+			"magma_block", "obsidian", "crying_obsidian", "dripstone_block", "mud", "moss_block", "pumpkin", "cactus",
+			"sugar_cane", "bamboo", "amethyst_block", "nether_wart_block", "warped_wart_block", "shroomlight",
+			"white_terracotta", "orange_terracotta", "yellow_terracotta", "brown_terracotta", "red_terracotta",
+			"light_gray_terracotta", "sculk_vein", "pointed_dripstone", "cobweb", "mushroom_stem");
+
+	static {
+		terminal("cobblestone", Items.COBBLESTONE, 1, Blocks.STONE, Blocks.COBBLESTONE);
+		terminal("cobbled_deepslate", Items.COBBLED_DEEPSLATE, 1, Blocks.DEEPSLATE, Blocks.COBBLED_DEEPSLATE);
+		terminal("dirt", Items.DIRT, 1, Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.PODZOL, Blocks.MYCELIUM);
+		terminal("raw_iron", Items.RAW_IRON, 1, Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE);
+		terminal("raw_gold", Items.RAW_GOLD, 1, Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE);
+		terminal("raw_copper", Items.RAW_COPPER, 2, Blocks.COPPER_ORE, Blocks.DEEPSLATE_COPPER_ORE);
+		terminal("coal", Items.COAL, 1, Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE);
+		terminal("diamond", Items.DIAMOND, 1, Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE);
+		terminal("emerald", Items.EMERALD, 1, Blocks.EMERALD_ORE, Blocks.DEEPSLATE_EMERALD_ORE);
+		terminal("lapis_lazuli", Items.LAPIS_LAZULI, 4, Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE);
+		terminal("redstone", Items.REDSTONE, 4, Blocks.REDSTONE_ORE, Blocks.DEEPSLATE_REDSTONE_ORE);
+		terminal("quartz", Items.QUARTZ, 1, Blocks.NETHER_QUARTZ_ORE);
+		terminal("clay_ball", Items.CLAY_BALL, 4, Blocks.CLAY);
+		terminal("snowball", Items.SNOWBALL, 4, Blocks.SNOW_BLOCK);
+		terminal("glowstone_dust", Items.GLOWSTONE_DUST, 3, Blocks.GLOWSTONE);
+
+		String smelt = "à cuire";
+		String craft = "à fabriquer";
+		recipe("stone", smelt, "cobblestone", 1);
+		recipe("smooth_stone", smelt, "stone", 1);
+		recipe("stone_bricks", craft, "stone", 1);
+		recipe("cracked_stone_bricks", smelt, "stone_bricks", 1);
+		recipe("chiseled_stone_bricks", craft, "stone", 1);
+		recipe("deepslate", smelt, "cobbled_deepslate", 1);
+		for (String s : new String[]{"polished_deepslate", "deepslate_bricks", "deepslate_tiles", "chiseled_deepslate"}) {
+			recipe(s, craft, "cobbled_deepslate", 1);
+		}
+		recipe("polished_andesite", craft, "andesite", 1);
+		recipe("polished_diorite", craft, "diorite", 1);
+		recipe("polished_granite", craft, "granite", 1);
+		recipe("polished_tuff", craft, "tuff", 1);
+		recipe("tuff_bricks", craft, "tuff", 1);
+		recipe("polished_blackstone", craft, "blackstone", 1);
+		recipe("polished_blackstone_bricks", craft, "blackstone", 1);
+		recipe("polished_basalt", craft, "basalt", 1);
+		recipe("glass", smelt, "sand", 1);
+		recipe("glass_pane", craft, "glass", 0.375);
+		recipe("sandstone", craft, "sand", 4);
+		recipe("cut_sandstone", craft, "sandstone", 1);
+		recipe("chiseled_sandstone", craft, "sandstone", 1);
+		recipe("smooth_sandstone", smelt, "sandstone", 1);
+		recipe("red_sandstone", craft, "red_sand", 4);
+		recipe("cut_red_sandstone", craft, "red_sandstone", 1);
+		recipe("chiseled_red_sandstone", craft, "red_sandstone", 1);
+		recipe("smooth_red_sandstone", smelt, "red_sandstone", 1);
+		recipe("clay", craft, "clay_ball", 4);
+		recipe("brick", smelt, "clay_ball", 1);
+		recipe("bricks", craft, "brick", 4);
+		recipe("terracotta", smelt, "clay", 1);
+		recipe("nether_brick", smelt, "netherrack", 1);
+		recipe("nether_bricks", craft, "nether_brick", 4);
+		recipe("quartz_block", craft, "quartz", 4);
+		recipe("quartz_bricks", craft, "quartz_block", 1);
+		recipe("quartz_pillar", craft, "quartz_block", 1);
+		recipe("smooth_quartz", smelt, "quartz_block", 1);
+		recipe("snow_block", craft, "snowball", 4);
+		recipe("glowstone", craft, "glowstone_dust", 4);
+		recipe("iron_ingot", smelt, "raw_iron", 1);
+		recipe("gold_ingot", smelt, "raw_gold", 1);
+		recipe("copper_ingot", smelt, "raw_copper", 1);
+		recipe("iron_block", craft, "iron_ingot", 9);
+		recipe("gold_block", craft, "gold_ingot", 9);
+		recipe("copper_block", craft, "copper_ingot", 9);
+		recipe("diamond_block", craft, "diamond", 9);
+		recipe("emerald_block", craft, "emerald", 9);
+		recipe("lapis_block", craft, "lapis_lazuli", 9);
+		recipe("redstone_block", craft, "redstone", 9);
+		recipe("coal_block", craft, "coal", 9);
+		recipe("iron_bars", craft, "iron_ingot", 0.375);
+		recipe("iron_chain", craft, "iron_ingot", 1.23);
+		recipe("stick", craft, "oak_planks", 0.5);
+		RECIPES.put("torch", new Recipe(List.of(new Ingredient("stick", 0.25), new Ingredient("coal", 0.25)), craft));
+		RECIPES.put("lantern", new Recipe(List.of(new Ingredient("iron_ingot", 0.9), new Ingredient("torch", 1)), craft));
+		recipe("crafting_table", craft, "oak_planks", 4);
+		recipe("chest", craft, "oak_planks", 8);
+		recipe("barrel", craft, "oak_planks", 7);
+		recipe("furnace", craft, "cobblestone", 8);
+		recipe("ladder", craft, "stick", 7.0 / 3);
+
+		for (String w : WOODS) {
+			wood(w, w + "_log", w + "_wood");
+		}
+		for (String w : STEMS) {
+			wood(w, w + "_stem", w + "_hyphae");
+		}
+	}
+
+	private static void wood(String w, String log, String wood) {
+		TERMINALS.put(log, new Terminal(item(log), Set.of(block(log)), 1));
+		String planks = w + "_planks";
+		recipe(planks, "à fabriquer", log, 0.25);
+		recipe(wood, "à fabriquer", log, 4.0 / 3);
+		recipe("stripped_" + log, "à écorcer (hache)", log, 1);
+		recipe("stripped_" + wood, "à écorcer (hache)", wood, 1);
+		recipe(w + "_fence", "à fabriquer", planks, 5.0 / 3);
+		recipe(w + "_fence_gate", "à fabriquer", planks, 4);
+		recipe(w + "_door", "à fabriquer", planks, 2);
+		recipe(w + "_trapdoor", "à fabriquer", planks, 3);
+		recipe(w + "_button", "à fabriquer", planks, 1);
+		recipe(w + "_pressure_plate", "à fabriquer", planks, 2);
+		recipe(w + "_sign", "à fabriquer", planks, 13.0 / 6);
+	}
+
+	private static void terminal(String key, Item display, double yield, Block... sources) {
+		TERMINALS.put(key, new Terminal(display, new LinkedHashSet<>(List.of(sources)), yield));
+	}
+
+	private static void recipe(String out, String note, String in, double ratio) {
+		RECIPES.put(out, new Recipe(List.of(new Ingredient(in, ratio)), note));
+	}
+
+	private static Identifier id(String path) {
+		return Identifier.withDefaultNamespace(path);
+	}
+
+	private static Item item(String path) {
+		return BuiltInRegistries.ITEM.getValue(id(path));
+	}
+
+	private static Block block(String path) {
+		return BuiltInRegistries.BLOCK.getValue(id(path));
+	}
+
+	private static boolean itemExists(String path) {
+		return BuiltInRegistries.ITEM.containsKey(id(path));
+	}
+
+	// ------------------------------------------------------------------ resolution
+
+	private static final class Acc {
+		final Map<String, Double> terminals = new LinkedHashMap<>();
+		final Map<Item, Integer> craft = new LinkedHashMap<>();
+		final Map<Item, String> craftNote = new LinkedHashMap<>();
+		final Map<Item, Integer> manual = new LinkedHashMap<>();
+		final Map<Item, Integer> forcedDirect = new LinkedHashMap<>();
+		final Map<Item, Integer> stock = new LinkedHashMap<>();
+		final Map<Item, Integer> usedStock = new LinkedHashMap<>();
+
+		/** Consomme le stock disponible pour {@code item} ; renvoie la quantite restant a obtenir. */
+		double consume(Item item, double qty) {
+			int have = stock.getOrDefault(item, 0);
+			if (have <= 0 || qty <= 0) return qty;
+			int take = (int) Math.min(have, Math.ceil(qty - 1e-9));
+			stock.put(item, have - take);
+			usedStock.merge(item, take, Integer::sum);
+			return Math.max(0, qty - take);
+		}
+	}
+
+	/**
+	 * @param wanted objets voulus et quantites
+	 * @param forceDirect objets que l'utilisateur veut chercher tels quels dans le monde
+	 */
+	public static Plan resolve(Map<Item, Integer> wanted, Set<Item> forceDirect) {
+		return resolve(wanted, forceDirect, Map.of());
+	}
+
+	/**
+	 * @param stock contenu connu des coffres : il est deduit a chaque niveau (objet final,
+	 *              intermediaires comme les planches, puis matieres premieres comme les buches)
+	 */
+	public static Plan resolve(Map<Item, Integer> wanted, Set<Item> forceDirect, Map<Item, Integer> stock) {
+		Acc acc = new Acc();
+		acc.stock.putAll(stock);
+		for (Map.Entry<Item, Integer> e : wanted.entrySet()) {
+			Item it = e.getKey();
+			if (forceDirect.contains(it)) {
+				int left = (int) Math.ceil(acc.consume(it, e.getValue()));
+				if (left > 0) acc.forcedDirect.merge(it, left, Integer::sum);
+				continue;
+			}
+			resolveItem(acc, it, e.getValue(), 0);
+		}
+
+		Plan plan = new Plan();
+		for (Map.Entry<String, Double> e : acc.terminals.entrySet()) {
+			Terminal t = terminalFor(e.getKey());
+			int blocks = (int) Math.ceil(e.getValue() / t.yieldPerBlock - 1e-9);
+			if (blocks <= 0) continue;
+			plan.targets.add(new Target(t.display.getName().getString(), new ItemStack(t.display), t.sources, blocks));
+		}
+		for (Map.Entry<Item, Integer> e : acc.forcedDirect.entrySet()) {
+			Block b = Block.byItem(e.getKey());
+			if (b == Blocks.AIR) {
+				plan.manual.add(new Line(e.getKey(), e.getValue(), "pas un bloc"));
+				continue;
+			}
+			plan.targets.add(new Target(e.getKey().getName().getString(), new ItemStack(e.getKey()), Set.of(b), e.getValue()));
+		}
+		acc.craft.forEach((it, n) -> plan.toCraft.add(new Line(it, n, acc.craftNote.getOrDefault(it, ""))));
+		acc.usedStock.forEach((it, n) -> plan.fromStock.add(new Line(it, n, "deja dans les coffres")));
+		acc.manual.forEach((it, n) -> plan.manual.add(new Line(it, n, "")));
+		return plan;
+	}
+
+	private static Terminal terminalFor(String key) {
+		Terminal t = TERMINALS.get(key);
+		if (t != null) return t;
+		// bloc naturel qui se ramasse tel quel
+		return new Terminal(item(key), Set.of(block(key)), 1);
+	}
+
+	private static void resolveItem(Acc acc, Item item, double qty, int depth) {
+		qty = acc.consume(item, qty);
+		if (qty <= 1e-9) return;
+		Identifier key = BuiltInRegistries.ITEM.getKey(item);
+		if (!"minecraft".equals(key.getNamespace()) || depth > 8) {
+			if (depth == 0) acc.manual.merge(item, (int) Math.ceil(qty), Integer::sum);
+			return;
+		}
+		if (!resolvePath(acc, key.getPath(), qty, depth)) {
+			if (depth == 0) {
+				acc.manual.merge(item, (int) Math.ceil(qty), Integer::sum);
+			} else {
+				// un ingredient intermediaire inconnu : on le signale aussi
+				acc.manual.merge(item, (int) Math.ceil(qty), Integer::sum);
+			}
+		}
+	}
+
+	private static boolean resolvePath(Acc acc, String path, double qty, int depth) {
+		if (TERMINALS.containsKey(path)) {
+			acc.terminals.merge(path, qty, Double::sum);
+			return true;
+		}
+		if (NATURAL.contains(path)) {
+			acc.terminals.merge(path, qty, Double::sum);
+			return true;
+		}
+		Recipe r = RECIPES.get(path);
+		if (r != null) {
+			for (Ingredient ing : r.ingredients) {
+				if (!itemExists(ing.item)) return false;
+				resolveItem(acc, item(ing.item), qty * ing.ratio, depth + 1);
+			}
+			if (depth == 0) {
+				Item it = item(path);
+				acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);
+				acc.craftNote.put(it, r.note);
+			}
+			return true;
+		}
+		// escaliers / dalles / murets : on remonte au bloc de base
+		String[][] shapes = {{"_stairs", "1.5"}, {"_slab", "0.5"}, {"_wall", "1"}};
+		for (String[] s : shapes) {
+			if (!path.endsWith(s[0])) continue;
+			String base = path.substring(0, path.length() - s[0].length());
+			for (String cand : new String[]{base + "_planks", base + "s", base + "_block", base}) {
+				if (!itemExists(cand) || Block.byItem(item(cand)) == Blocks.AIR) continue;
+				resolveItem(acc, item(cand), qty * Double.parseDouble(s[1]), depth + 1);
+				if (depth == 0) {
+					Item it = item(path);
+					acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);
+					acc.craftNote.put(it, "à fabriquer");
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+}

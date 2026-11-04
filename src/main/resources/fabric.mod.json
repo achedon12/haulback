@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "haulback",
+  "version": "${version}",
+  "name": "Haulback",
+  "description": "Va chercher les blocs que tu choisis (ou les materiaux d'un schematic), les ramene dans ton coffre et revient au point de depart. Base sur Baritone.",
+  "authors": ["achedon12"],
+  "contact": {
+    "homepage": "https://github.com/achedon12/haulback",
+    "sources": "https://github.com/achedon12/haulback",
+    "issues": "https://github.com/achedon12/haulback/issues"
+  },
+  "license": "LGPL-3.0-only",
+  "icon": "assets/haulback/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["fr.achedon12.haulback.HaulbackClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.2",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*",
+    "baritone": ">=1.17.0"
+  }
+}
