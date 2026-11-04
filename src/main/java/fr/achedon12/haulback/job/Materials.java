@@ -149,6 +149,30 @@ public final class Materials {
 		recipe("stick", craft, "oak_planks", 0.5);
 		RECIPES.put("torch", new Recipe(List.of(new Ingredient("stick", 0.25), new Ingredient("coal", 0.25)), craft));
 		RECIPES.put("lantern", new Recipe(List.of(new Ingredient("iron_ingot", 0.9), new Ingredient("torch", 1)), craft));
+		// copper family (oxidized and waxed variants need time or honeycomb: provide yourself)
+		recipe("cut_copper", craft, "copper_block", 1);
+		recipe("chiseled_copper", craft, "cut_copper", 1);
+		recipe("copper_grate", craft, "copper_block", 1);
+		recipe("copper_door", craft, "copper_ingot", 2);
+		recipe("copper_trapdoor", craft, "copper_ingot", 4);
+		recipe("copper_bars", craft, "copper_ingot", 0.375);
+		// mud (wheat comes from farming: provide yourself)
+		RECIPES.put("packed_mud", new Recipe(List.of(new Ingredient("mud", 1), new Ingredient("wheat", 1)), craft));
+		recipe("mud_bricks", craft, "packed_mud", 1);
+		// prismarine (shards and crystals are mob drops: provide yourself)
+		recipe("prismarine", craft, "prismarine_shard", 4);
+		recipe("prismarine_bricks", craft, "prismarine_shard", 9);
+		RECIPES.put("dark_prismarine", new Recipe(List.of(new Ingredient("prismarine_shard", 8), new Ingredient("ink_sac", 1)), craft));
+		RECIPES.put("sea_lantern", new Recipe(List.of(new Ingredient("prismarine_shard", 4), new Ingredient("prismarine_crystals", 5)), craft));
+		recipe("end_stone_bricks", craft, "end_stone", 1);
+		// dyed glass and concrete powder (dyes: provide yourself)
+		for (String c : new String[]{"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+				"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"}) {
+			RECIPES.put(c + "_stained_glass", new Recipe(List.of(new Ingredient("glass", 1), new Ingredient(c + "_dye", 0.125)), craft));
+			recipe(c + "_stained_glass_pane", craft, c + "_stained_glass", 0.375);
+			RECIPES.put(c + "_concrete_powder", new Recipe(List.of(new Ingredient("sand", 0.5), new Ingredient("gravel", 0.5),
+					new Ingredient(c + "_dye", 0.125)), craft));
+		}
 		recipe("crafting_table", craft, "oak_planks", 4);
 		recipe("chest", craft, "oak_planks", 8);
 		recipe("barrel", craft, "oak_planks", 7);
