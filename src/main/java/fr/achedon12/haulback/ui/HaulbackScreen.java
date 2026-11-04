@@ -1,11 +1,13 @@
 package fr.achedon12.haulback.ui;
 
+import fr.achedon12.haulback.L;
 import baritone.api.BaritoneAPI;
 import fr.achedon12.haulback.ChestCache;
 import fr.achedon12.haulback.Collector;
 import fr.achedon12.haulback.HaulbackClient;
 import fr.achedon12.haulback.HaulbackConfig;
 import fr.achedon12.haulback.job.Materials;
+import fr.achedon12.haulback.job.SchematicPlanner;
 import fr.achedon12.haulback.job.SchematicReader;
 import fr.achedon12.haulback.job.Target;
 import net.minecraft.ChatFormatting;
@@ -46,14 +48,14 @@ public final class HaulbackScreen extends Screen {
 
 	/** Categories du catalogue de blocs. */
 	private enum Category {
-		ALL("Tous", b -> true),
-		ORES("Minerais", b -> path(b).endsWith("_ore") || path(b).equals("ancient_debris")),
-		WOOD("Bois", b -> is(b, BlockTags.LOGS) || is(b, BlockTags.PLANKS) || is(b, BlockTags.LEAVES)),
-		STONE("Pierre", b -> is(b, BlockTags.BASE_STONE_OVERWORLD) || is(b, BlockTags.BASE_STONE_NETHER)
+		ALL("haulback.cat.all", b -> true),
+		ORES("haulback.cat.ores", b -> path(b).endsWith("_ore") || path(b).equals("ancient_debris")),
+		WOOD("haulback.cat.wood", b -> is(b, BlockTags.LOGS) || is(b, BlockTags.PLANKS) || is(b, BlockTags.LEAVES)),
+		STONE("haulback.cat.stone", b -> is(b, BlockTags.BASE_STONE_OVERWORLD) || is(b, BlockTags.BASE_STONE_NETHER)
 				|| path(b).contains("cobble") || path(b).equals("obsidian") || path(b).equals("calcite")),
-		EARTH("Terre", b -> is(b, BlockTags.DIRT) || is(b, BlockTags.SAND) || path(b).equals("gravel")
+		EARTH("haulback.cat.earth", b -> is(b, BlockTags.DIRT) || is(b, BlockTags.SAND) || path(b).equals("gravel")
 				|| path(b).equals("clay") || path(b).contains("snow") || path(b).contains("terracotta")),
-		MODDED("Moddés", b -> !"minecraft".equals(BuiltInRegistries.BLOCK.getKey(b).getNamespace()));
+		MODDED("haulback.cat.modded", b -> !"minecraft".equals(BuiltInRegistries.BLOCK.getKey(b).getNamespace()));
 
 		final String label;
 		final Predicate<Block> test;
@@ -78,7 +80,8 @@ public final class HaulbackScreen extends Screen {
 	private static SchematicReader.Result schematicData;
 	private static String schematicError;
 	private static final Set<Item> forceDirect = new HashSet<>();
-	private static boolean buildAfter = true;
+	/** Mode schematic : 0 = materiaux seulement, 1 = construction seulement, 2 = les deux. */
+	private static int schemMode = 2;
 	private static BlockPos origin;
 	private static String search = "";
 
@@ -158,10 +161,10 @@ public final class HaulbackScreen extends Screen {
 		rightX = leftX + leftW + 12;
 		rightW = px + pw - 14 - rightX;
 
-		searchBox = new EditBox(font, leftX + 8, bodyTop + 6, leftW - 40, 12, Component.literal("Rechercher"));
+		searchBox = new EditBox(font, leftX + 8, bodyTop + 6, leftW - 40, 12, Component.literal(L.t("haulback.ui.search")));
 		searchBox.setBordered(false);
 		searchBox.setMaxLength(64);
-		searchBox.setHint(Component.literal("Rechercher un bloc").withStyle(ChatFormatting.DARK_GRAY));
+		searchBox.setHint(Component.literal(L.t("haulback.ui.search_hint")).withStyle(ChatFormatting.DARK_GRAY));
 		searchBox.setTextColor(Theme.TEXT);
 		searchBox.setValue(search);
 		searchBox.setResponder(s -> {
@@ -246,7 +249,7 @@ public final class HaulbackScreen extends Screen {
 			schematicData = SchematicReader.read(f);
 		} catch (Exception e) {
 			HaulbackClient.LOG.warn("Lecture du schematic {} impossible", f, e);
-			schematicError = "Lecture impossible : " + e.getMessage();
+			schematicError = L.t("haulback.ui.read_error") + e.getMessage();
 		}
 		recomputePlan();
 	}
@@ -295,12 +298,12 @@ public final class HaulbackScreen extends Screen {
 		g.renderItem(new ItemStack(Items.CHEST), ix + 2, iy + 2);
 		g.drawString(font, "Haulback", ix + 28, iy + 2, Theme.TEXT, false);
 
-		String[] labels = {"Blocs", "Schematic", "Options"};
+		String[] labels = {L.t("haulback.ui.tab_blocks"), L.t("haulback.ui.tab_schematic"), L.t("haulback.ui.tab_options")};
 		int segW = 0;
 		for (String l : labels) segW = Math.max(segW, font.width(l) + 20);
 		int n = labels.length;
 		int sx = px + pw - 12 - segW * n - 4, sy = py + 10;
-		String sub = font.plainSubstrByWidth("Récolte, range, construit, revient", Math.max(0, sx - (ix + 28) - 8));
+		String sub = font.plainSubstrByWidth(L.t("haulback.ui.tagline"), Math.max(0, sx - (ix + 28) - 8));
 		g.drawString(font, sub, ix + 28, iy + 12, Theme.FAINT, false);
 		round(g, sx, sy, segW * n + 4, 18, 0xFF0E1013);
 		int knob = (int) (sx + 2 + tabAnim * segW);
@@ -327,12 +330,12 @@ public final class HaulbackScreen extends Screen {
 
 		int cx = leftX, cy = bodyTop + 27;
 		for (Category c : Category.values()) {
-			int w = font.width(c.label) + 12;
+			int w = font.width(L.t(c.label)) + 12;
 			if (cx + w > leftX + leftW) break;
 			boolean on = category == c;
 			boolean hover = in(mx, my, cx, cy, cx + w, cy + 14);
 			round(g, cx, cy, w, 14, on ? 0x33F2A93B : hover ? Theme.SURFACE_HI : Theme.SURFACE);
-			g.drawString(font, c.label, cx + 6, cy + 3, on ? Theme.ACCENT : hover ? Theme.TEXT : Theme.MUTED, false);
+			g.drawString(font, L.t(c.label), cx + 6, cy + 3, on ? Theme.ACCENT : hover ? Theme.TEXT : Theme.MUTED, false);
 			final Category target = c;
 			hits.add(new Hit(cx, cy, cx + w, cy + 14, e -> {
 				category = target;
@@ -373,21 +376,21 @@ public final class HaulbackScreen extends Screen {
 				}));
 			}
 		}
-		if (filtered.isEmpty()) centered(g, "Aucun bloc ne correspond.", leftX + leftW / 2, gridTop + 20, Theme.FAINT);
+		if (filtered.isEmpty()) centered(g, L.t("haulback.ui.no_match"), leftX + leftW / 2, gridTop + 20, Theme.FAINT);
 		scrollbar(g, leftX + leftW + 4, gridTop, bodyBottom, leftScroll, leftMax, visibleRows);
 		if (hovered != null) {
 			g.setTooltipForNextFrame(font, Component.literal(hovered.getName().getString()
-					+ (selection.containsKey(hovered) ? "  (Maj + clic : retirer)" : "")), mx, my);
+					+ (selection.containsKey(hovered) ? L.t("haulback.ui.shift_remove") : "")), mx, my);
 		}
 
 		// ---- colonne selection
-		g.drawString(font, "Sélection", rightX, bodyTop + 7, Theme.TEXT, false);
+		g.drawString(font, L.t("haulback.ui.selection"), rightX, bodyTop + 7, Theme.TEXT, false);
 		String badge = String.valueOf(selection.size());
-		int bx = rightX + font.width("Sélection") + 6;
+		int bx = rightX + font.width(L.t("haulback.ui.selection")) + 6;
 		round(g, bx, bodyTop + 4, font.width(badge) + 8, 13, selection.isEmpty() ? Theme.SURFACE : 0x33F2A93B);
 		g.drawString(font, badge, bx + 4, bodyTop + 7, selection.isEmpty() ? Theme.FAINT : Theme.ACCENT, false);
 		if (!selection.isEmpty()) {
-			String clear = "Tout retirer";
+			String clear = L.t("haulback.ui.clear_all");
 			int cw = font.width(clear);
 			boolean hc = in(mx, my, rightX + rightW - cw, bodyTop + 4, rightX + rightW, bodyTop + 17);
 			g.drawString(font, clear, rightX + rightW - cw, bodyTop + 7, hc ? Theme.DANGER : Theme.FAINT, false);
@@ -404,8 +407,8 @@ public final class HaulbackScreen extends Screen {
 			g.renderItem(new ItemStack(Items.IRON_PICKAXE), 0, 0);
 			g.pose().popMatrix();
 			g.fill(rightX + rightW / 2 - 16, midY - 8, rightX + rightW / 2 + 16, midY + 24, 0x9016191C);
-			centered(g, "Choisis les blocs à récolter", rightX + rightW / 2, midY + 32, Theme.MUTED);
-			centered(g, "dans la grille de gauche.", rightX + rightW / 2, midY + 44, Theme.FAINT);
+			centered(g, L.t("haulback.ui.empty1"), rightX + rightW / 2, midY + 32, Theme.MUTED);
+			centered(g, L.t("haulback.ui.empty2"), rightX + rightW / 2, midY + 44, Theme.FAINT);
 			return;
 		}
 		List<Block> sel = new ArrayList<>(selection.keySet());
@@ -437,7 +440,7 @@ public final class HaulbackScreen extends Screen {
 			g.drawString(font, font.plainSubstrByWidth(b.getName().getString(), nameW), rightX + 28, y + 4, Theme.TEXT, false);
 			int inStock = ChestCache.stockOf(HaulbackConfig.get().chestList()).getOrDefault(b.asItem(), 0);
 			if (inStock > 0) {
-				String st = Math.min(inStock, qty) >= qty ? "déjà en stock" : "stock " + inStock + ", reste " + (qty - inStock);
+				String st = Math.min(inStock, qty) >= qty ? L.t("haulback.ui.in_stock") : L.t("haulback.ui.stock") + inStock + L.t("haulback.ui.left") + (qty - inStock);
 				g.drawString(font, font.plainSubstrByWidth(st, nameW), rightX + 28, y + 14, Theme.OK, false);
 			} else {
 				g.drawString(font, stacks(qty), rightX + 28, y + 14, Theme.FAINT, false);
@@ -445,36 +448,36 @@ public final class HaulbackScreen extends Screen {
 		}
 		scrollbar(g, rightX + rightW + 3, sTop, bodyBottom - 14, rightScroll, rightMax, sVisible);
 		int total = selection.values().stream().mapToInt(Integer::intValue).sum();
-		String sum = "Total " + total + "  -  " + stacks(total) + "   (+/- 16, Maj : 1)";
+		String sum = L.t("haulback.ui.total") + total + "  -  " + stacks(total) + L.t("haulback.ui.step_hint");
 		g.drawString(font, font.plainSubstrByWidth(sum, rightW), rightX, bodyBottom - 9, Theme.FAINT, false);
 	}
 
 	private static String stacks(int n) {
 		int s = n / 64, r = n % 64;
-		if (s == 0) return n + (n > 1 ? " blocs" : " bloc");
-		return s + (s > 1 ? " stacks" : " stack") + (r > 0 ? " + " + r : "");
+		if (s == 0) return n + (n > 1 ? L.t("haulback.ui.blocks") : L.t("haulback.ui.block"));
+		return s + (s > 1 ? L.t("haulback.ui.stacks") : L.t("haulback.ui.stack")) + (r > 0 ? " + " + r : "");
 	}
 
 	// ---- onglet schematic
 
 	private void renderSchematicTab(GuiGraphics g, int mx, int my) {
-		int bw = font.width("Dossier") + 12;
-		if (leftW - bw - font.width("Actualiser") - 20 > font.width("Fichiers")) {
-			g.drawString(font, "Fichiers", leftX, bodyTop + 6, Theme.TEXT, false);
+		int bw = font.width(L.t("haulback.ui.folder")) + 12;
+		if (leftW - bw - font.width(L.t("haulback.ui.refresh")) - 20 > font.width(L.t("haulback.ui.files"))) {
+			g.drawString(font, L.t("haulback.ui.files"), leftX, bodyTop + 6, Theme.TEXT, false);
 		}
-		button(g, mx, my, leftX + leftW - bw, bodyTop + 1, bw, 16, "Dossier", Kind.GHOST, e -> Util.getPlatform().openFile(schematicDirs().get(0)));
-		int bw2 = font.width("Actualiser") + 12;
-		button(g, mx, my, leftX + leftW - bw - 4 - bw2, bodyTop + 1, bw2, 16, "Actualiser", Kind.GHOST, e -> refreshFiles());
+		button(g, mx, my, leftX + leftW - bw, bodyTop + 1, bw, 16, L.t("haulback.ui.folder"), Kind.GHOST, e -> Util.getPlatform().openFile(schematicDirs().get(0)));
+		int bw2 = font.width(L.t("haulback.ui.refresh")) + 12;
+		button(g, mx, my, leftX + leftW - bw - 4 - bw2, bodyTop + 1, bw2, 16, L.t("haulback.ui.refresh"), Kind.GHOST, e -> refreshFiles());
 
 		int listTop = bodyTop + 22;
 		int rowH = 26;
 		if (files.isEmpty()) {
 			round(g, leftX, listTop, leftW, bodyBottom - listTop, 0xFF16191C);
 			int y = listTop + 14;
-			centered(g, "Aucun schematic", leftX + leftW / 2, y, Theme.MUTED);
-			centered(g, "Dépose un .litematic ou .schem", leftX + leftW / 2, y + 16, Theme.FAINT);
-			centered(g, "dans le dossier (bouton Dossier),", leftX + leftW / 2, y + 28, Theme.FAINT);
-			centered(g, "puis Actualiser.", leftX + leftW / 2, y + 40, Theme.FAINT);
+			centered(g, L.t("haulback.ui.no_schematic"), leftX + leftW / 2, y, Theme.MUTED);
+			centered(g, L.t("haulback.ui.no_schematic1"), leftX + leftW / 2, y + 16, Theme.FAINT);
+			centered(g, L.t("haulback.ui.no_schematic2"), leftX + leftW / 2, y + 28, Theme.FAINT);
+			centered(g, L.t("haulback.ui.no_schematic3"), leftX + leftW / 2, y + 40, Theme.FAINT);
 		} else {
 			int visible = Math.max(1, (bodyBottom - listTop) / rowH);
 			leftMax = Math.max(0, files.size() - visible);
@@ -494,7 +497,7 @@ public final class HaulbackScreen extends Screen {
 				round(g, leftX + leftW - ew - 6, y + 6, ew, 11, 0xFF15171A);
 				g.drawString(font, ext, leftX + leftW - ew - 2, y + 8, on ? Theme.ACCENT : Theme.FAINT, false);
 				g.drawString(font, font.plainSubstrByWidth(base, leftW - ew - 20), leftX + 9, y + 4, on ? Theme.TEXT : Theme.MUTED, false);
-				g.drawString(font, (f.length() / 1024 + 1) + " Ko", leftX + 9, y + 13, Theme.FAINT, false);
+				g.drawString(font, (f.length() / 1024 + 1) + L.t("haulback.ui.kb"), leftX + 9, y + 13, Theme.FAINT, false);
 				hits.add(new Hit(leftX, y, leftX + leftW, y + rowH - 3, e -> loadSchematic(f)));
 			}
 			scrollbar(g, leftX + leftW + 4, listTop, bodyBottom, leftScroll, leftMax, visible);
@@ -503,7 +506,7 @@ public final class HaulbackScreen extends Screen {
 		int x = rightX;
 		if (schematic == null) {
 			round(g, x, bodyTop, rightW, bodyBottom - bodyTop, 0xFF16191C);
-			centered(g, "Choisis un fichier à gauche", x + rightW / 2, bodyTop + (bodyBottom - bodyTop) / 2 - 4, Theme.FAINT);
+			centered(g, L.t("haulback.ui.pick_file"), x + rightW / 2, bodyTop + (bodyBottom - bodyTop) / 2 - 4, Theme.FAINT);
 			return;
 		}
 		if (schematicError != null) {
@@ -514,18 +517,33 @@ public final class HaulbackScreen extends Screen {
 		SchematicReader.Result d = schematicData;
 
 		int tileW = (rightW - 8) / 3;
-		tile(g, x, bodyTop, tileW, "Taille", d.width() + " x " + d.height() + " x " + d.length());
-		tile(g, x + tileW + 4, bodyTop, tileW, "Blocs", String.valueOf(d.totalBlocks()));
-		tile(g, x + (tileW + 4) * 2, bodyTop, rightW - (tileW + 4) * 2, "Types", String.valueOf(d.items().size()));
+		tile(g, x, bodyTop, tileW, L.t("haulback.ui.size"), d.width() + " x " + d.height() + " x " + d.length());
+		tile(g, x + tileW + 4, bodyTop, tileW, L.t("haulback.ui.tab_blocks"), String.valueOf(d.totalBlocks()));
+		tile(g, x + (tileW + 4) * 2, bodyTop, rightW - (tileW + 4) * 2, L.t("haulback.ui.types"), String.valueOf(d.items().size()));
 
-		int oy = bodyTop + 32;
-		checkbox(g, mx, my, x, oy, "Construire après la récolte", buildAfter, e -> buildAfter = !buildAfter);
-		oy += 15;
-		String o = origin == null ? "non définie" : origin.getX() + " " + origin.getY() + " " + origin.getZ();
-		g.drawString(font, "Origine", x, oy + 3, Theme.FAINT, false);
-		g.drawString(font, o, x + font.width("Origine") + 6, oy + 3, origin == null ? Theme.DANGER : Theme.TEXT, false);
-		int iw = font.width("Ma position") + 12;
-		button(g, mx, my, x + rightW - iw, oy, iw, 14, "Ma position", Kind.GHOST, e -> {
+		int oy = bodyTop + 31;
+		String[] modes = {L.t("haulback.ui.mode_materials"), L.t("haulback.ui.mode_build"), L.t("haulback.ui.mode_both")};
+		String[] hints = {L.t("haulback.ui.mode_materials_hint"), L.t("haulback.ui.mode_build_hint"), L.t("haulback.ui.mode_both_hint")};
+		int segW = (rightW - 4) / 3;
+		round(g, x, oy, rightW, 16, 0xFF0E1013);
+		round(g, x + 2 + schemMode * segW, oy + 2, segW, 12, 0xFF2A2F36);
+		g.fill(x + 2 + schemMode * segW + 6, oy + 13, x + 2 + schemMode * segW + segW - 6, oy + 14, Theme.ACCENT);
+		for (int i = 0; i < 3; i++) {
+			int sx0 = x + 2 + i * segW;
+			boolean hov = in(mx, my, sx0, oy, sx0 + segW, oy + 16);
+			String lab = font.plainSubstrByWidth(modes[i], segW - 4);
+			g.drawString(font, lab, sx0 + (segW - font.width(lab)) / 2, oy + 4, schemMode == i ? Theme.TEXT : hov ? 0xFFB4BAC2 : Theme.MUTED, false);
+			final int m = i;
+			hits.add(new Hit(sx0, oy, sx0 + segW, oy + 16, e -> schemMode = m));
+			if (hov) g.setTooltipForNextFrame(font, Component.literal(hints[i]), mx, my);
+		}
+		oy += 19;
+		String o = origin == null ? L.t("haulback.ui.not_set") : origin.getX() + " " + origin.getY() + " " + origin.getZ();
+		g.drawString(font, L.t("haulback.ui.origin"), x, oy + 3, Theme.FAINT, false);
+		g.drawString(font, o, x + font.width(L.t("haulback.ui.origin")) + 6, oy + 3,
+				schemMode == 0 ? Theme.FAINT : origin == null ? Theme.DANGER : Theme.TEXT, false);
+		int iw = font.width(L.t("haulback.ui.my_position")) + 12;
+		button(g, mx, my, x + rightW - iw, oy, iw, 14, L.t("haulback.ui.my_position"), Kind.GHOST, e -> {
 			if (minecraft.player != null) origin = minecraft.player.blockPosition();
 		});
 
@@ -533,26 +551,28 @@ public final class HaulbackScreen extends Screen {
 		g.fill(x, top - 2, x + rightW, top - 1, Theme.LINE);
 		int max = 1;
 		for (Target t : plan.targets) max = Math.max(max, t.needed);
-		for (Materials.Line l : plan.toCraft) max = Math.max(max, l.count());
+		for (Materials.Step l : plan.steps) max = Math.max(max, l.count());
 		List<Object[]> lines = new ArrayList<>();
 		if (!plan.targets.isEmpty()) {
-			lines.add(new Object[]{"h", "À récolter", Theme.ACCENT});
+			lines.add(new Object[]{"h", L.t("haulback.ui.sec_gather"), Theme.ACCENT});
 			for (Target t : plan.targets) lines.add(new Object[]{"t", t});
 		}
-		if (!plan.toCraft.isEmpty()) {
-			lines.add(new Object[]{"h", "À fabriquer ensuite", 0xFF5CC8FF});
-			for (Materials.Line l : plan.toCraft) lines.add(new Object[]{"c", l});
+		if (!plan.steps.isEmpty()) {
+			lines.add(new Object[]{"h", L.t("haulback.ui.sec_workshop"), 0xFF5CC8FF});
+			for (Materials.Step st : plan.steps) {
+				lines.add(new Object[]{"c", new Materials.Line(st.item(), st.count(), st.smelt() ? L.t("haulback.note.smelt") : L.t("haulback.note.craft"))});
+			}
 		}
 		if (!plan.fromStock.isEmpty()) {
-			lines.add(new Object[]{"h", "Déjà dans les coffres", Theme.OK});
+			lines.add(new Object[]{"h", L.t("haulback.ui.sec_stock"), Theme.OK});
 			for (Materials.Line l : plan.fromStock) lines.add(new Object[]{"s", l});
 		}
 		if (!plan.manual.isEmpty()) {
-			lines.add(new Object[]{"h", "À fournir toi-même  (clic : chercher tel quel)", Theme.DANGER});
+			lines.add(new Object[]{"h", L.t("haulback.ui.sec_manual"), Theme.DANGER});
 			for (Materials.Line l : plan.manual) lines.add(new Object[]{"m", l});
 		}
 		if (!forceDirect.isEmpty()) {
-			lines.add(new Object[]{"h", "Cherchés tels quels  (clic : annuler)", Theme.OK});
+			lines.add(new Object[]{"h", L.t("haulback.ui.sec_forced"), Theme.OK});
 			for (Item it : forceDirect) lines.add(new Object[]{"f", it});
 		}
 		int lineH = 15;
@@ -639,13 +659,13 @@ public final class HaulbackScreen extends Screen {
 	private void renderOptionsTab(GuiGraphics g, int mx, int my) {
 		HaulbackConfig cfg = HaulbackConfig.get();
 		boolean stone = cfg.toolTier >= 1;
-		g.drawString(font, "Outils à fabriquer s'ils manquent", leftX, bodyTop + 4, Theme.TEXT, false);
+		g.drawString(font, L.t("haulback.ui.tools_title"), leftX, bodyTop + 4, Theme.TEXT, false);
 		int cardW = (leftW - 6) / 2, cardH = 34;
 		Object[][] tools = {
-				{"Pioche", stone ? Items.STONE_PICKAXE : Items.WOODEN_PICKAXE, cfg.toolPickaxe, (Runnable) () -> cfg.toolPickaxe = !cfg.toolPickaxe},
-				{"Hache", stone ? Items.STONE_AXE : Items.WOODEN_AXE, cfg.toolAxe, (Runnable) () -> cfg.toolAxe = !cfg.toolAxe},
-				{"Épée", stone ? Items.STONE_SWORD : Items.WOODEN_SWORD, cfg.toolSword, (Runnable) () -> cfg.toolSword = !cfg.toolSword},
-				{"Pelle", stone ? Items.STONE_SHOVEL : Items.WOODEN_SHOVEL, cfg.toolShovel, (Runnable) () -> cfg.toolShovel = !cfg.toolShovel},
+				{L.t("haulback.ui.pickaxe"), stone ? Items.STONE_PICKAXE : Items.WOODEN_PICKAXE, cfg.toolPickaxe, (Runnable) () -> cfg.toolPickaxe = !cfg.toolPickaxe},
+				{L.t("haulback.ui.axe"), stone ? Items.STONE_AXE : Items.WOODEN_AXE, cfg.toolAxe, (Runnable) () -> cfg.toolAxe = !cfg.toolAxe},
+				{L.t("haulback.ui.sword"), stone ? Items.STONE_SWORD : Items.WOODEN_SWORD, cfg.toolSword, (Runnable) () -> cfg.toolSword = !cfg.toolSword},
+				{L.t("haulback.ui.shovel"), stone ? Items.STONE_SHOVEL : Items.WOODEN_SHOVEL, cfg.toolShovel, (Runnable) () -> cfg.toolShovel = !cfg.toolShovel},
 		};
 		for (int i = 0; i < tools.length; i++) {
 			int x = leftX + (i % 2) * (cardW + 6);
@@ -658,7 +678,7 @@ public final class HaulbackScreen extends Screen {
 			g.renderItem(new ItemStack((Item) tools[i][1]), x + 8, y + 9);
 			if (!on) g.fill(x + 6, y + 7, x + 26, y + 27, 0x9915171A);
 			g.drawString(font, (String) tools[i][0], x + 32, y + 8, on ? Theme.TEXT : Theme.MUTED, false);
-			g.drawString(font, font.plainSubstrByWidth(on ? "si absente" : "ignorée", cardW - 36), x + 32, y + 19, on ? Theme.ACCENT : Theme.FAINT, false);
+			g.drawString(font, font.plainSubstrByWidth(on ? L.t("haulback.ui.if_missing") : L.t("haulback.ui.ignored"), cardW - 36), x + 32, y + 19, on ? Theme.ACCENT : Theme.FAINT, false);
 			Runnable r = (Runnable) tools[i][3];
 			hits.add(new Hit(x, y, x + cardW, y + cardH, e -> {
 				r.run();
@@ -666,17 +686,17 @@ public final class HaulbackScreen extends Screen {
 			}));
 		}
 		int ty = bodyTop + 18 + 2 * (cardH + 6) + 2;
-		g.drawString(font, "Matériau", leftX, ty + 4, Theme.FAINT, false);
-		int segX = leftX + font.width("Matériau") + 8, segW = 52;
+		g.drawString(font, L.t("haulback.ui.material"), leftX, ty + 4, Theme.FAINT, false);
+		int segX = leftX + font.width(L.t("haulback.ui.material")) + 8, segW = 52;
 		round(g, segX, ty, segW * 2 + 4, 16, 0xFF0E1013);
 		round(g, segX + 2 + (stone ? segW : 0), ty + 2, segW, 12, 0xFF2A2F36);
-		g.drawString(font, "Bois", segX + 2 + (segW - font.width("Bois")) / 2, ty + 4, !stone ? Theme.TEXT : Theme.MUTED, false);
-		g.drawString(font, "Pierre", segX + 2 + segW + (segW - font.width("Pierre")) / 2, ty + 4, stone ? Theme.TEXT : Theme.MUTED, false);
+		g.drawString(font, L.t("haulback.cat.wood"), segX + 2 + (segW - font.width(L.t("haulback.cat.wood"))) / 2, ty + 4, !stone ? Theme.TEXT : Theme.MUTED, false);
+		g.drawString(font, L.t("haulback.cat.stone"), segX + 2 + segW + (segW - font.width(L.t("haulback.cat.stone"))) / 2, ty + 4, stone ? Theme.TEXT : Theme.MUTED, false);
 		hits.add(new Hit(segX, ty, segX + 2 + segW, ty + 16, e -> { cfg.toolTier = 0; cfg.save(); }));
 		hits.add(new Hit(segX + 2 + segW, ty, segX + segW * 2 + 4, ty + 16, e -> { cfg.toolTier = 1; cfg.save(); }));
 		int ny = ty + 22;
 		List<net.minecraft.util.FormattedCharSequence> note = font.split(Component.literal(
-				"Un outil déjà dans l'inventaire n'est jamais refait. La pioche est faite d'office si les blocs l'exigent."), leftW);
+				L.t("haulback.ui.tools_note")), leftW);
 		for (net.minecraft.util.FormattedCharSequence line : note) {
 			if (ny + 9 > bodyBottom) break;
 			g.drawString(font, line, leftX, ny, Theme.FAINT, false);
@@ -685,21 +705,28 @@ public final class HaulbackScreen extends Screen {
 
 		// comportement
 		int x = rightX;
-		g.drawString(font, "Comportement", x, bodyTop + 4, Theme.TEXT, false);
+		g.drawString(font, L.t("haulback.ui.behavior"), x, bodyTop + 4, Theme.TEXT, false);
 		int y = bodyTop + 18;
-		y = stepperRow(g, mx, my, x, y, "Rayon max", String.valueOf(cfg.maxRadius),
+		y = stepperRow(g, mx, my, x, y, L.t("haulback.ui.max_radius"), String.valueOf(cfg.maxRadius),
 				d -> cfg.maxRadius = clamp(cfg.maxRadius + d * 32, 32, 1024));
-		y = stepperRow(g, mx, my, x, y, "Rentrer sous (coeurs)", String.valueOf(cfg.retreatHealth / 2),
+		y = stepperRow(g, mx, my, x, y, L.t("haulback.ui.retreat"), String.valueOf(cfg.retreatHealth / 2),
 				d -> cfg.retreatHealth = clamp(cfg.retreatHealth + d * 2, 2, 18));
-		y = stepperRow(g, mx, my, x, y, "Manger sous (cuisses)", String.valueOf(cfg.eatBelowFood / 2),
+		y = stepperRow(g, mx, my, x, y, L.t("haulback.ui.eat"), String.valueOf(cfg.eatBelowFood / 2),
 				d -> cfg.eatBelowFood = clamp(cfg.eatBelowFood + d * 2, 4, 18));
-		y = stepperRow(g, mx, my, x, y, "Réserve pour ponts", String.valueOf(cfg.keepThrowaway),
+		y = stepperRow(g, mx, my, x, y, L.t("haulback.ui.reserve"), String.valueOf(cfg.keepThrowaway),
 				d -> cfg.keepThrowaway = clamp(cfg.keepThrowaway + d * 16, 0, 256));
 		round(g, x, y, rightW, 20, Theme.SURFACE);
-		checkbox(g, mx, my, x + 6, y + 4, "Se défendre (monstres)", cfg.fight, e -> {
+		checkbox(g, mx, my, x + 6, y + 4, L.t("haulback.ui.fight"), cfg.fight, e -> {
 			cfg.fight = !cfg.fight;
 			cfg.save();
 		});
+		y += 24;
+		if (y + 20 <= bodyBottom) {
+			String keys = HaulbackClient.keyName("open") + L.t("haulback.ui.keys_open") + HaulbackClient.keyName("chest") + L.t("haulback.ui.keys_chest")
+					+ HaulbackClient.keyName("toggle") + L.t("haulback.ui.keys_toggle");
+			g.drawString(font, font.plainSubstrByWidth(keys, rightW), x, y + 2, Theme.MUTED, false);
+			g.drawString(font, font.plainSubstrByWidth(L.t("haulback.ui.keys_note"), rightW), x, y + 12, Theme.FAINT, false);
+		}
 	}
 
 	private int stepperRow(GuiGraphics g, int mx, int my, int x, int y, String label, String value, java.util.function.IntConsumer change) {
@@ -740,12 +767,12 @@ public final class HaulbackScreen extends Screen {
 		g.fill(px + 1, fy - 6, px + pw - 1, fy - 5, Theme.LINE);
 		List<BlockPos> chests = HaulbackConfig.get().chestList();
 		int known = ChestCache.knownCount(chests);
-		String title = chests.isEmpty() ? "Coffres" : chests.size() + (chests.size() > 1 ? " coffres" : " coffre");
+		String title = chests.isEmpty() ? L.t("haulback.ui.chests") : chests.size() + (chests.size() > 1 ? L.t("haulback.ui.n_chests") : L.t("haulback.ui.n_chest"));
 		String cs;
-		if (chests.isEmpty()) cs = "aucun choisi";
+		if (chests.isEmpty()) cs = L.t("haulback.ui.none_selected");
 		else if (chests.size() == 1) cs = chests.get(0).getX() + " " + chests.get(0).getY() + " " + chests.get(0).getZ();
-		else cs = known + "/" + chests.size() + " inventoriés";
-		if (pw < 470 && chests.size() > 1) cs = known + "/" + chests.size() + " lus";
+		else cs = known + "/" + chests.size() + L.t("haulback.ui.read_n");
+		if (pw < 470 && chests.size() > 1) cs = known + "/" + chests.size() + L.t("haulback.ui.read_short");
 		int chipW = 24 + Math.max(font.width(cs), font.width(title)) + 10;
 		round(g, leftX, fy, chipW, 26, Theme.SURFACE);
 		g.renderItem(new ItemStack(Items.CHEST), leftX + 4, fy + 5);
@@ -753,21 +780,21 @@ public final class HaulbackScreen extends Screen {
 		g.drawString(font, cs, leftX + 24, fy + 14, chests.isEmpty() ? Theme.DANGER : Theme.TEXT, false);
 		if (!chests.isEmpty()) {
 			List<Component> tip = new ArrayList<>();
-			tip.add(Component.literal("Coffres choisis"));
+			tip.add(Component.literal(L.t("haulback.ui.selected_chests")));
 			for (BlockPos p : chests) {
 				tip.add(Component.literal(p.getX() + " " + p.getY() + " " + p.getZ()
-						+ (ChestCache.known(p) ? "" : "  (contenu inconnu)")).withStyle(ChatFormatting.GRAY));
+						+ (ChestCache.known(p) ? "" : L.t("haulback.msg.unknown_contents"))).withStyle(ChatFormatting.GRAY));
 			}
 			if (in(mx, my, leftX, fy, leftX + chipW, fy + 26)) g.setComponentTooltipForNextFrame(font, tip, mx, my);
 		}
-		boolean compact = pw < 470 || (tab == Tab.SCHEMATIC && buildAfter && pw < 560);
-		String addLabel = compact ? "+/-" : "Ajouter / retirer";
+		boolean compact = pw < 470;
+		String addLabel = compact ? "+/-" : L.t("haulback.ui.add_remove");
 		int cbw = font.width(addLabel) + 14;
 		button(g, mx, my, leftX + chipW + 6, fy + 4, cbw, 18, addLabel, Kind.GHOST, e -> pickChest());
 		int cbw2 = 0;
 		if (!chests.isEmpty() && !compact) {
-			cbw2 = font.width("Vider") + 12;
-			button(g, mx, my, leftX + chipW + 6 + cbw + 4, fy + 4, cbw2, 18, "Vider", Kind.GHOST, e -> {
+			cbw2 = font.width(L.t("haulback.ui.clear")) + 12;
+			button(g, mx, my, leftX + chipW + 6 + cbw + 4, fy + 4, cbw2, 18, L.t("haulback.ui.clear"), Kind.GHOST, e -> {
 				HaulbackConfig.get().clearChests();
 				recomputePlan();
 			});
@@ -778,28 +805,28 @@ public final class HaulbackScreen extends Screen {
 		Collector col = Collector.get();
 		int rx = px + pw - 14;
 		if (col.active()) {
-			int w = font.width("Arrêter") + 24;
-			button(g, mx, my, rx - w, fy + 3, w, 20, "Arrêter", Kind.DANGER, e -> col.stop("Arrêté à la demande."));
+			int w = font.width(L.t("haulback.ui.stop")) + 24;
+			button(g, mx, my, rx - w, fy + 3, w, 20, L.t("haulback.ui.stop"), Kind.DANGER, e -> col.stop(L.t("haulback.msg.stopped_by_user")));
 			float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 250.0);
 			int sx = leftX + chipW + 6 + cbw + 12;
 			g.fill(sx, fy + 11, sx + 4, fy + 15, mul(Theme.ACCENT, 0.4f + 0.6f * pulse));
-			String st = font.plainSubstrByWidth("En cours : " + col.status(), Math.max(0, rx - w - 10 - sx - 8));
+			String st = font.plainSubstrByWidth(L.t("haulback.msg.running") + col.status(), Math.max(0, rx - w - 10 - sx - 8));
 			g.drawString(font, st, sx + 8, fy + 10, Theme.MUTED, false);
 		} else if (tab == Tab.OPTIONS) {
-			String label = "Sauvegarde auto";
+			String label = L.t("haulback.ui.autosave");
 			if (rx - font.width(label) > leftX + chipW + 6 + cbw + 10) g.drawString(font, label, rx - font.width(label), fy + 9, Theme.FAINT, false);
 		} else if (tab == Tab.BLOCKS) {
-			String label = compact ? "Lancer" : "Lancer la récolte";
+			String label = compact ? L.t("haulback.ui.start_short") : L.t("haulback.ui.start_gather");
 			int w = font.width(label) + 28;
 			button(g, mx, my, rx - w, fy + 3, w, 20, label, Kind.PRIMARY, e -> startBlocks());
 		} else {
-			String main = buildAfter ? (compact ? "Tout lancer" : "Récolter et construire") : "Récolter";
+			String main = switch (schemMode) {
+				case 0 -> L.t("haulback.ui.gather");
+				case 1 -> L.t("haulback.ui.build");
+				default -> compact ? L.t("haulback.ui.start_all") : L.t("haulback.ui.gather_build");
+			};
 			int w = font.width(main) + 28;
-			button(g, mx, my, rx - w, fy + 3, w, 20, main, Kind.PRIMARY, e -> startSchematic(false));
-			if (buildAfter) {
-				int w2 = font.width("Construire") + 18;
-				button(g, mx, my, rx - w - 8 - w2, fy + 3, w2, 20, "Construire", Kind.NORMAL, e -> startSchematic(true));
-			}
+			button(g, mx, my, rx - w, fy + 3, w, 20, main, Kind.PRIMARY, e -> startSchematic());
 		}
 		if (flash != null && System.currentTimeMillis() < flashUntil) {
 			int fw = font.width(flash) + 14;
@@ -816,7 +843,7 @@ public final class HaulbackScreen extends Screen {
 	private void pickChest() {
 		String msg = HaulbackClient.toggleChest(minecraft);
 		if (msg == null) {
-			flash("Vise un coffre ou un baril avant d'ouvrir l'interface (ou touche J).", Theme.DANGER);
+			flash(L.t("haulback.ui.look_at_chest"), Theme.DANGER);
 		} else {
 			flash(msg, Theme.OK);
 			recomputePlan();
@@ -825,7 +852,7 @@ public final class HaulbackScreen extends Screen {
 
 	private void startBlocks() {
 		if (selection.isEmpty()) {
-			flash("Ajoute au moins un bloc.", Theme.DANGER);
+			flash(L.t("haulback.ui.add_block"), Theme.DANGER);
 			return;
 		}
 		List<Target> ts = new ArrayList<>();
@@ -834,20 +861,21 @@ public final class HaulbackScreen extends Screen {
 		if (Collector.get().active()) onClose();
 	}
 
-	private void startSchematic(boolean buildOnly) {
+	private void startSchematic() {
 		if (plan == null) {
-			flash("Choisis un schematic lisible.", Theme.DANGER);
+			flash(L.t("haulback.ui.pick_readable"), Theme.DANGER);
 			return;
 		}
-		boolean build = buildOnly || buildAfter;
+		boolean buildOnly = schemMode == 1;
+		boolean build = schemMode != 0;
 		if (build && origin == null) {
-			flash("Place-toi à l'origine puis clique \"Ma position\".", Theme.DANGER);
+			flash(L.t("haulback.ui.stand_at_origin"), Theme.DANGER);
 			return;
 		}
 		Map<Item, Integer> wanted = schematicData.items();
 		Set<Item> forced = new HashSet<>(forceDirect);
-		boolean gather = !buildOnly && !Materials.resolve(wanted, forced).targets.isEmpty();
-		Collector.get().start(stock -> buildOnly ? List.of() : Materials.resolve(wanted, forced, stock).targets,
+		boolean gather = !buildOnly;
+		Collector.get().start(stock -> SchematicPlanner.plan(wanted, forced, buildOnly, stock),
 				gather, build ? schematic : null, build ? origin : null, wanted.keySet());
 		if (Collector.get().active()) onClose();
 	}

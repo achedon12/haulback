@@ -32,6 +32,14 @@ public final class Target {
 		this.needed = needed;
 	}
 
+	/** Copie fraiche (progression a zero), pour relancer une mission. */
+	public Target copy() {
+		Target t = new Target(label, icon.copy(), sources, needed + fromStock);
+		t.stockItem = stockItem;
+		t.yieldPerBlock = yieldPerBlock;
+		return t;
+	}
+
 	/** Version "blocs choisis" : un bloc casse rapporte l'objet du bloc. */
 	public static Target ofBlock(Block b, int count) {
 		Target t = new Target(b.getName().getString(), new ItemStack(b), Set.of(b), count);

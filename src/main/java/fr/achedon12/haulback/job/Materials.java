@@ -30,8 +30,24 @@ public final class Materials {
 		}
 	}
 
+	/**
+	 * Etape de transformation a faire a l'atelier (dans l'ordre : ingredients d'abord).
+	 *
+	 * @param inputs quantite de chaque ingredient par objet produit
+	 */
+	public record Step(Item item, int count, boolean smelt, Map<Item, Double> inputs) {}
+
 	/** Resultat de la resolution. */
 	public static final class Plan {
+		/** Fabrications et cuissons, dans l'ordre ou les faire. */
+		public final List<Step> steps = new ArrayList<>();
+
+		public int smeltCount() {
+			int n = 0;
+			for (Step st : steps) if (st.smelt()) n += st.count();
+			return n;
+		}
+
 		public final List<Target> targets = new ArrayList<>();
 		public final List<Line> toCraft = new ArrayList<>();
 		public final List<Line> manual = new ArrayList<>();
@@ -152,8 +168,6 @@ public final class Materials {
 		String planks = w + "_planks";
 		recipe(planks, "à fabriquer", log, 0.25);
 		recipe(wood, "à fabriquer", log, 4.0 / 3);
-		recipe("stripped_" + log, "à écorcer (hache)", log, 1);
-		recipe("stripped_" + wood, "à écorcer (hache)", wood, 1);
 		recipe(w + "_fence", "à fabriquer", planks, 5.0 / 3);
 		recipe(w + "_fence_gate", "à fabriquer", planks, 4);
 		recipe(w + "_door", "à fabriquer", planks, 2);
@@ -193,6 +207,17 @@ public final class Materials {
 		final Map<String, Double> terminals = new LinkedHashMap<>();
 		final Map<Item, Integer> craft = new LinkedHashMap<>();
 		final Map<Item, String> craftNote = new LinkedHashMap<>();
+		final Map<Item, Double> stepQty = new LinkedHashMap<>();
+		final Map<Item, Boolean> stepSmelt = new LinkedHashMap<>();
+		final Map<Item, Map<Item, Double>> stepInputs = new LinkedHashMap<>();
+
+		void step(Item out, double qty, boolean smelt, Map<Item, Double> inputs) {
+			// re-inserer en fin de liste garde l'ordre "ingredients d'abord"
+			Double prev = stepQty.remove(out);
+			stepQty.put(out, (prev == null ? 0 : prev) + qty);
+			stepSmelt.put(out, smelt);
+			stepInputs.put(out, inputs);
+		}
 		final Map<Item, Integer> manual = new LinkedHashMap<>();
 		final Map<Item, Integer> forcedDirect = new LinkedHashMap<>();
 		final Map<Item, Integer> stock = new LinkedHashMap<>();
@@ -250,6 +275,7 @@ public final class Materials {
 			plan.targets.add(new Target(e.getKey().getName().getString(), new ItemStack(e.getKey()), Set.of(b), e.getValue()));
 		}
 		acc.craft.forEach((it, n) -> plan.toCraft.add(new Line(it, n, acc.craftNote.getOrDefault(it, ""))));
+		acc.stepQty.forEach((it, q) -> plan.steps.add(new Step(it, (int) Math.ceil(q - 1e-9), acc.stepSmelt.get(it), acc.stepInputs.get(it))));
 		acc.usedStock.forEach((it, n) -> plan.fromStock.add(new Line(it, n, "deja dans les coffres")));
 		acc.manual.forEach((it, n) -> plan.manual.add(new Line(it, n, "")));
 		return plan;
@@ -291,10 +317,13 @@ public final class Materials {
 		}
 		Recipe r = RECIPES.get(path);
 		if (r != null) {
+			Map<Item, Double> inputs = new LinkedHashMap<>();
 			for (Ingredient ing : r.ingredients) {
 				if (!itemExists(ing.item)) return false;
+				inputs.put(item(ing.item), ing.ratio);
 				resolveItem(acc, item(ing.item), qty * ing.ratio, depth + 1);
 			}
+			acc.step(item(path), qty, r.note.contains("cuire"), inputs);
 			if (depth == 0) {
 				Item it = item(path);
 				acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);
@@ -310,6 +339,7 @@ public final class Materials {
 			for (String cand : new String[]{base + "_planks", base + "s", base + "_block", base}) {
 				if (!itemExists(cand) || Block.byItem(item(cand)) == Blocks.AIR) continue;
 				resolveItem(acc, item(cand), qty * Double.parseDouble(s[1]), depth + 1);
+				acc.step(item(path), qty, false, Map.of(item(cand), Double.parseDouble(s[1])));
 				if (depth == 0) {
 					Item it = item(path);
 					acc.craft.merge(it, (int) Math.ceil(qty), Integer::sum);

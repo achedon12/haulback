@@ -6,6 +6,7 @@ import baritone.api.Settings;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalGetToBlock;
 import baritone.api.pathing.goals.GoalNear;
+import fr.achedon12.haulback.job.Materials;
 import fr.achedon12.haulback.job.Target;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -40,7 +41,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.io.File;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.Comparator;
 import java.util.function.Function;
 import java.util.HashMap;
@@ -57,7 +60,7 @@ import java.util.Set;
  */
 public final class Collector {
 
-	public enum Phase {IDLE, TOOLS, MINING, PICKUP, EATING, TO_CHEST, AT_CHEST, RESTING, BUILDING, TO_HOME}
+	public enum Phase {IDLE, TOOLS, WORKSHOP, MINING, PICKUP, EATING, TO_CHEST, AT_CHEST, RESTING, BUILDING, TO_HOME}
 
 	private enum Visit {SURVEY, DEPOSIT, DEPOSIT_FINAL, RESTOCK}
 
@@ -78,7 +81,7 @@ public final class Collector {
 	private Visit visit;
 	private Phase resumeAfterEating;
 	private int ticks;
-	private String status = "En attente";
+	private String status = L.t("haulback.status.waiting");
 	private String finishReason;
 
 	private final List<Target> targets = new ArrayList<>();
@@ -91,10 +94,11 @@ public final class Collector {
 	private final List<BlockPos> chests = new ArrayList<>();
 	private final Set<BlockPos> fullChests = new HashSet<>();
 	private final List<BlockPos> surveyQueue = new ArrayList<>();
-	private Function<Map<Item, Integer>, List<Target>> planner;
+	private Function<Map<Item, Integer>, MissionPlan> planner;
 	private int menuSeen;
 	private long startedAt;
 	private long endedAt;
+	private boolean buildDone;
 	private boolean endedWell;
 
 	// suivi du minage
@@ -165,12 +169,21 @@ public final class Collector {
 		return buildFile != null;
 	}
 
+	/** Ce qu'il faut faire apres l'inventaire des coffres : blocs a casser, puis etapes d'atelier. */
+	public record MissionPlan(List<Target> targets, List<Materials.Step> steps) {}
+
 	/** Version simple : liste de cibles fixe, deduite du stock des coffres par {@link Target#deduct}. */
 	public void start(List<Target> newTargets, File schematic, BlockPos origin, Set<Item> schematicItems) {
-		List<Target> copy = new ArrayList<>(newTargets);
+		List<Target> proto = new ArrayList<>();
+		for (Target t : newTargets) proto.add(t.copy());
 		start(stock -> {
-			for (Target t : copy) t.deduct(stock);
-			return copy;
+			List<Target> fresh = new ArrayList<>();
+			for (Target t : proto) {
+				Target c = t.copy();
+				c.deduct(stock);
+				fresh.add(c);
+			}
+			return new MissionPlan(fresh, List.of());
 		}, !newTargets.isEmpty(), schematic, origin, schematicItems);
 	}
 
@@ -178,23 +191,24 @@ public final class Collector {
 	 * @param planner   calcule les cibles a partir du stock des coffres (lu au depart)
 	 * @param gather    vrai s'il y a quelque chose a recolter
 	 */
-	public void start(Function<Map<Item, Integer>, List<Target>> planner, boolean gather, File schematic, BlockPos origin,
+	public void start(Function<Map<Item, Integer>, MissionPlan> planner, boolean gather, File schematic, BlockPos origin,
 					  Set<Item> schematicItems) {
 		LocalPlayer p = mc.player;
 		if (p == null) return;
 		List<BlockPos> list = HaulbackConfig.get().chestList();
 		if (list.isEmpty()) {
-			say("Choisis d'abord au moins un coffre (vise-le puis touche J ou bouton \"Ajouter\").", ChatFormatting.RED);
+			say(L.t("haulback.msg.need_chest"), ChatFormatting.RED);
 			return;
 		}
 		if (!gather && schematic == null) {
-			say("Rien à faire : ajoute des blocs ou choisis un schematic.", ChatFormatting.RED);
+			say(L.t("haulback.msg.nothing_to_do"), ChatFormatting.RED);
 			return;
 		}
 		if (schematic != null && origin == null) {
-			say("Choisis l'endroit où construire (bouton \"Ma position\").", ChatFormatting.RED);
+			say(L.t("haulback.msg.need_origin"), ChatFormatting.RED);
 			return;
 		}
+		lastStart = () -> start(planner, gather, schematic, origin, schematicItems);
 		reset();
 		chests.addAll(list);
 		this.planner = planner;
@@ -205,44 +219,172 @@ public final class Collector {
 		startedAt = System.currentTimeMillis();
 		snapshotInventory();
 		applyBaritoneSettings();
-		say("Départ. Point A : " + fmt(home) + ", " + chests.size() + (chests.size() > 1 ? " coffres." : " coffre."), ChatFormatting.GRAY);
+		say(L.t("haulback.msg.start") + fmt(home) + ", " + chests.size() + (chests.size() > 1 ? L.t("haulback.msg.chests_dot") : L.t("haulback.msg.chest_dot")), ChatFormatting.GRAY);
 		// inventaire des coffres, du plus proche au plus loin
 		surveyQueue.clear();
 		surveyQueue.addAll(chests);
 		goChest(Visit.SURVEY);
 	}
 
-	/** Fin de l'inventaire des coffres : on deduit le stock et on lance la suite. */
+	private Runnable lastStart;
+
+	public boolean hasLastMission() {
+		return lastStart != null;
+	}
+
+	/** Relance la derniere mission lancee depuis l'interface. */
+	public boolean relaunch() {
+		if (lastStart == null) {
+			say(L.t("haulback.msg.no_last_mission"), ChatFormatting.RED);
+			return false;
+		}
+		if (active()) return false;
+		lastStart.run();
+		return active();
+	}
+
+	/** Touche marche/arret : arrete si actif, sinon relance la derniere mission. */
+	public void toggle() {
+		if (active()) stop(L.t("haulback.msg.stopped_by_user"));
+		else relaunch();
+	}
+
+	/** Fin de l'inventaire des coffres : on deduit le stock et on prepare les etapes. */
 	private void finishSurvey() {
 		LocalPlayer p = mc.player;
 		Map<Item, Integer> stock = new HashMap<>(ChestCache.stockOf(chests));
-		List<Target> planned = planner.apply(stock);
-		targets.clear();
+		MissionPlan plan = planner.apply(stock);
+		List<Target> main = new ArrayList<>();
 		int saved = 0;
-		for (Target t : planned) {
+		for (Target t : plan.targets()) {
 			saved += t.fromStock;
-			if (t.needed > 0) targets.add(t);
+			if (t.needed > 0) main.add(t);
 		}
-		if (saved > 0 || planned.size() != targets.size()) {
-			say("Stock des coffres pris en compte : " + targets.size() + " objectif(s) restant(s).", ChatFormatting.GRAY);
+		if (saved > 0 || plan.targets().size() != main.size()) {
+			say(L.t("haulback.msg.stock_used") + main.size() + L.t("haulback.msg.goals_left"), ChatFormatting.GRAY);
 		}
-		if (targets.isEmpty()) {
-			if (buildFile != null) {
-				say("Tous les matériaux sont déjà dans les coffres.", ChatFormatting.GREEN);
-				goChest(Visit.RESTOCK);
-			} else {
-				finishReason = "Tout est déjà dans les coffres.";
-				goHome();
+
+		stages.clear();
+		// pioche en fer / diamant si les blocs l'exigent : minerai + charbon, four, puis atelier
+		int required = ToolCrafter.requiredTier(main);
+		int have = ToolCrafter.bestPickTier(p);
+		tools.extraSticks = 0;
+		if (!main.isEmpty()) stages.add(new Stage(StageKind.TOOLS, List.of(), List.of()));
+		if (required >= 2 && have < 2) {
+			tools.extraSticks += 2;
+			say(L.t("haulback.msg.need_iron_pick"), ChatFormatting.GRAY);
+			Map<Item, Integer> st = new HashMap<>(stock);
+			List<Target> iron = new ArrayList<>();
+			Target ore = new Target(Items.RAW_IRON.getName().getString(), new ItemStack(Items.RAW_IRON),
+					Set.of(Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE), 3);
+			int ingots = st.getOrDefault(Items.IRON_INGOT, 0);
+			ore.needed = Math.max(0, 3 - ingots);
+			ore.stockItem = Items.RAW_IRON;
+			ore.deduct(st);
+			if (ore.needed > 0) iron.add(ore);
+			int coalHave = st.getOrDefault(Items.COAL, 0) + st.getOrDefault(Items.CHARCOAL, 0);
+			if (coalHave == 0 && ingots < 3) {
+				iron.add(new Target(Items.COAL.getName().getString(), new ItemStack(Items.COAL),
+						Set.of(Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE), 1));
 			}
+			if (!iron.isEmpty()) stages.add(new Stage(StageKind.GATHER, iron, List.of()));
+			List<Materials.Step> ironSteps = new ArrayList<>();
+			if (ingots < 3) ironSteps.add(new Materials.Step(Items.IRON_INGOT, 3 - ingots, true, Map.of(Items.RAW_IRON, 1.0)));
+			ironSteps.add(new Materials.Step(Items.IRON_PICKAXE, 1, false, Map.of(Items.IRON_INGOT, 3.0, Items.STICK, 2.0)));
+			stages.add(new Stage(StageKind.PRODUCE, List.of(), ironSteps));
+		}
+		if (required >= 3 && have < 3) {
+			tools.extraSticks += 2;
+			say(L.t("haulback.msg.need_diamond_pick"), ChatFormatting.GRAY);
+			int dia = stock.getOrDefault(Items.DIAMOND, 0);
+			if (dia < 3) {
+				stages.add(new Stage(StageKind.GATHER, List.of(new Target(Items.DIAMOND.getName().getString(),
+						new ItemStack(Items.DIAMOND), Set.of(Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE), 3 - dia)), List.of()));
+			}
+			stages.add(new Stage(StageKind.PRODUCE, List.of(), List.of(
+					new Materials.Step(Items.DIAMOND_PICKAXE, 1, false, Map.of(Items.DIAMOND, 3.0, Items.STICK, 2.0)))));
+		}
+		if (!main.isEmpty()) stages.add(new Stage(StageKind.GATHER, main, List.of()));
+		if (!plan.steps().isEmpty()) stages.add(new Stage(StageKind.PRODUCE, List.of(), plan.steps()));
+		if (buildFile != null) stages.add(new Stage(StageKind.BUILD, List.of(), List.of()));
+		if (main.isEmpty() && plan.steps().isEmpty() && buildFile == null) {
+			finishReason = L.t("haulback.msg.all_in_stock");
+		}
+		stages.add(new Stage(StageKind.HOME, List.of(), List.of()));
+		// les cibles affichees d'emblee : celles de la recolte principale
+		targets.clear();
+		targets.addAll(main);
+		nextStage();
+	}
+
+	// ------------------------------------------------------------------ etapes
+
+	private enum StageKind {TOOLS, GATHER, PRODUCE, BUILD, HOME}
+
+	private record Stage(StageKind kind, List<Target> targets, List<Materials.Step> steps) {}
+
+	private final Deque<Stage> stages = new ArrayDeque<>();
+	private Stage stage;
+	private final Workshop workshop = new Workshop();
+	private boolean toolsMidGather;
+
+	public Workshop workshop() {
+		return workshop;
+	}
+
+	/** Passe a l'etape suivante de la mission. */
+	private void nextStage() {
+		LocalPlayer p = mc.player;
+		stage = stages.poll();
+		if (stage == null) {
+			goHome();
 			return;
 		}
-		if (!enterToolsIfNeeded(p)) {
-			if (tools.failure() != null) {
-				finishReason = tools.failure();
-				goHome();
-				return;
+		switch (stage.kind()) {
+			case TOOLS -> {
+				toolsMidGather = false;
+				List<Target> all = new ArrayList<>(targets);
+				if (!enterToolsIfNeeded(p, all)) {
+					if (tools.failure() != null) {
+						finishReason = tools.failure();
+						goHome();
+					} else {
+						nextStage();
+					}
+				}
 			}
-			enterMining();
+			case GATHER -> {
+				targets.clear();
+				targets.addAll(stage.targets());
+				mineGiveUps = 0;
+				stuckCount = 0;
+				if (targets.isEmpty()) nextStage();
+				else enterMining();
+			}
+			case PRODUCE -> {
+				baritone().getPathingBehavior().cancelEverything();
+				workshop.start(stage.steps(), chests);
+				setPhase(Phase.WORKSHOP);
+				status = L.t("haulback.status.workshop");
+			}
+			case BUILD -> goChest(Visit.RESTOCK);
+			case HOME -> goHome();
+		}
+	}
+
+	private void tickWorkshop(LocalPlayer p) {
+		if (needsFood(p) && findFoodSlot(p) >= 0 && p.getFoodData().getFoodLevel() <= 8 && mc.screen == null) {
+			startEating(Phase.WORKSHOP);
+			return;
+		}
+		Workshop.Result r = workshop.tick(p);
+		status = workshop.status();
+		if (r == Workshop.Result.DONE) {
+			nextStage();
+		} else if (r == Workshop.Result.FAILED) {
+			if (p.containerMenu != p.inventoryMenu) p.closeContainer();
+			finishReason = workshop.failure();
+			goHome();
 		}
 	}
 
@@ -256,7 +398,11 @@ public final class Collector {
 
 	/** Passe en phase "outils" si des outils manquent. Renvoie true si c'est le cas. */
 	private boolean enterToolsIfNeeded(LocalPlayer p) {
-		if (!tools.plan(p, targets)) return false;
+		return enterToolsIfNeeded(p, targets);
+	}
+
+	private boolean enterToolsIfNeeded(LocalPlayer p, List<Target> forTargets) {
+		if (!tools.plan(p, forTargets)) return false;
 		baritone().getPathingBehavior().cancelEverything();
 		setPhase(Phase.TOOLS);
 		return true;
@@ -270,7 +416,12 @@ public final class Collector {
 		ToolCrafter.Result r = tools.tick(p);
 		status = tools.status();
 		if (r == ToolCrafter.Result.DONE) {
-			enterMining();
+			if (toolsMidGather) {
+				toolsMidGather = false;
+				enterMining();
+			} else {
+				nextStage();
+			}
 		} else if (r == ToolCrafter.Result.FAILED) {
 			if (p.containerMenu != p.inventoryMenu) p.closeContainer();
 			finishReason = tools.failure();
@@ -302,7 +453,7 @@ public final class Collector {
 			releaseKeys();
 			if (p.containerMenu != p.inventoryMenu) p.closeContainer();
 			fightTicks = 0;
-			status = "Se défend contre " + m.getName().getString();
+			status = L.t("haulback.status.fighting") + m.getName().getString();
 			HaulbackClient.LOG.info("Combat : {} a {} blocs", m.getType().toShortString(), (int) m.distanceTo(p));
 		}
 		if (foe != m) HaulbackClient.LOG.info("Cible : {} a {} blocs", m.getType().toShortString(), (int) m.distanceTo(p));
@@ -430,7 +581,7 @@ public final class Collector {
 			releaseKeys();
 			foe = null;
 			phase = Phase.IDLE;
-			status = "Arrêté (déconnexion)";
+			status = L.t("haulback.status.disconnected");
 		}
 	}
 
@@ -444,13 +595,14 @@ public final class Collector {
 			return;
 		}
 		if (p.isDeadOrDying()) {
-			stop("Le joueur est mort, arrêt du bot.");
+			stop(L.t("haulback.msg.died"));
 			return;
 		}
 		ticks++;
 		if (combat(p)) return;
 		switch (phase) {
 			case TOOLS -> tickTools(p);
+			case WORKSHOP -> tickWorkshop(p);
 			case MINING -> tickMining(p);
 			case PICKUP -> tickPickup(p);
 			case EATING -> tickEating(p);
@@ -475,12 +627,12 @@ public final class Collector {
 	private void tickMining(LocalPlayer p) {
 		HaulbackConfig cfg = HaulbackConfig.get();
 		if (targets.stream().allMatch(Target::done)) {
-			say("Tout est récolté, ramassage puis retour au coffre.", ChatFormatting.GREEN);
+			say(L.t("haulback.msg.all_gathered"), ChatFormatting.GREEN);
 			startPickup(Visit.DEPOSIT_FINAL);
 			return;
 		}
 		if (p.getHealth() <= cfg.retreatHealth) {
-			say("PV bas (" + (int) p.getHealth() + "), retour à la base pour se soigner.", ChatFormatting.GOLD);
+			say(L.t("haulback.msg.low_hp") + (int) p.getHealth() + L.t("haulback.msg.low_hp2"), ChatFormatting.GOLD);
 			restAfterDeposit = true;
 			goChest(Visit.DEPOSIT);
 			return;
@@ -491,25 +643,29 @@ public final class Collector {
 				return;
 			}
 			if (p.getFoodData().getFoodLevel() <= 6) {
-				finishReason = "Plus de nourriture : récolte interrompue.";
+				finishReason = L.t("haulback.msg.no_food");
 				goChest(Visit.DEPOSIT_FINAL);
 				return;
 			}
 		}
 		if (p.getInventory().getFreeSlot() < 0) {
-			say("Inventaire plein, aller-retour au coffre.", ChatFormatting.GRAY);
+			say(L.t("haulback.msg.inv_full"), ChatFormatting.GRAY);
 			goChest(Visit.DEPOSIT);
 			return;
 		}
 		if (home != null && Math.sqrt(p.blockPosition().distSqr(home)) > cfg.maxRadius) {
-			finishReason = "Rayon maximum (" + cfg.maxRadius + " blocs) atteint : récolte interrompue.";
+			finishReason = L.t("haulback.msg.radius") + cfg.maxRadius + L.t("haulback.msg.radius2");
 			goChest(Visit.DEPOSIT_FINAL);
 			return;
 		}
 
 		if (ticks % 100 == 99 && ToolCrafter.bestPickTier(p) < 0) {
-			say("Plus de pioche : fabrication d'une nouvelle.", ChatFormatting.GOLD);
-			if (enterToolsIfNeeded(p)) return;
+			say(L.t("haulback.msg.pick_broke"), ChatFormatting.GOLD);
+			tools.extraSticks = 0;
+			if (enterToolsIfNeeded(p)) {
+				toolsMidGather = true;
+				return;
+			}
 		}
 
 		Set<Block> wanted = new LinkedHashSet<>();
@@ -522,7 +678,7 @@ public final class Collector {
 			if (wanted.equals(issuedMine) && !running && ticks > 40) {
 				mineGiveUps++;
 				if (mineGiveUps >= 3) {
-					finishReason = "Baritone ne trouve plus de blocs à portée : récolte interrompue.";
+					finishReason = L.t("haulback.msg.no_blocks");
 					goChest(Visit.DEPOSIT_FINAL);
 					return;
 				}
@@ -531,7 +687,7 @@ public final class Collector {
 			issuedMine = wanted;
 			ticks = 0;
 		}
-		status = "Récolte : " + summary();
+		status = L.t("haulback.status.gathering") + summary();
 
 		// detection de blocage : pas bouge de 2 blocs en 60 s
 		if (stuckRef == null || p.position().distanceTo(stuckRef) > 2) {
@@ -540,7 +696,7 @@ public final class Collector {
 		} else if (++stuckTicks > 1200) {
 			stuckTicks = 0;
 			if (++stuckCount >= 3) {
-				finishReason = "Le bot semble bloqué : récolte interrompue.";
+				finishReason = L.t("haulback.msg.stuck");
 				goChest(Visit.DEPOSIT_FINAL);
 			} else {
 				b.getPathingBehavior().cancelEverything();
@@ -569,7 +725,7 @@ public final class Collector {
 		pickupThen = then;
 		pickupTarget = null;
 		setPhase(Phase.PICKUP);
-		status = "Ramasse les objets tombés";
+		status = L.t("haulback.status.pickup");
 	}
 
 	private void tickPickup(LocalPlayer p) {
@@ -579,9 +735,10 @@ public final class Collector {
 		}
 		if (pickupTarget == null || !pickupTarget.isAlive()) {
 			AABB box = p.getBoundingBox().inflate(12, 6, 12);
-			List<ItemEntity> items = mc.level.getEntitiesOfClass(ItemEntity.class, box, e -> e.isAlive() && e.onGround());
+			List<ItemEntity> items = mc.level.getEntitiesOfClass(ItemEntity.class, box, e -> e.isAlive());
 			if (items.isEmpty()) {
-				if (ticks > 10) goChest(pickupThen);
+				// laisse le temps au dernier objet casse d'apparaitre et de tomber
+				if (ticks > 30) goChest(pickupThen);
 				return;
 			}
 			items.sort((a, b) -> Double.compare(a.distanceToSqr(p), b.distanceToSqr(p)));
@@ -614,7 +771,7 @@ public final class Collector {
 		foodAtStart = mc.player.getFoodData().getFoodLevel();
 		eatAttempts = 0;
 		setPhase(Phase.EATING);
-		status = "Pause repas";
+		status = L.t("haulback.status.eating");
 	}
 
 	private void tickEating(LocalPlayer p) {
@@ -654,6 +811,8 @@ public final class Collector {
 			enterMining();
 		} else if (next == Phase.TOOLS) {
 			setPhase(Phase.TOOLS);
+		} else if (next == Phase.WORKSHOP) {
+			setPhase(Phase.WORKSHOP);
 		} else if (next == Phase.BUILDING) {
 			buildIssued = false;
 			setPhase(Phase.BUILDING);
@@ -673,10 +832,17 @@ public final class Collector {
 			if (v == Visit.SURVEY) {
 				finishSurvey();
 			} else if (v == Visit.RESTOCK) {
-				finishReason = "Il manque des matériaux pour la construction dans les coffres.";
+				if (buildItems.stream().anyMatch(it -> total(mc.player, it) > 0) && restockEmpty < 2) {
+					// rien dans les coffres, mais on a encore des blocs sur soi (ramasses) : on continue
+					restockEmpty++;
+					buildIssued = false;
+					setPhase(Phase.BUILDING);
+					return;
+				}
+				finishReason = L.t("haulback.msg.build_missing");
 				goHome();
 			} else {
-				finishReason = "Tous les coffres sont pleins.";
+				finishReason = L.t("haulback.msg.all_full");
 				goHome();
 			}
 			return;
@@ -687,9 +853,9 @@ public final class Collector {
 		pathRetries = 0;
 		setPhase(Phase.TO_CHEST);
 		status = switch (v) {
-			case SURVEY -> "Inventaire des coffres (" + (chests.size() - surveyQueue.size()) + "/" + chests.size() + ")";
-			case RESTOCK -> "Vers le coffre (prendre les matériaux)";
-			default -> "Retour au coffre";
+			case SURVEY -> L.t("haulback.status.survey") + (chests.size() - surveyQueue.size()) + "/" + chests.size() + ")";
+			case RESTOCK -> L.t("haulback.status.to_chest_restock");
+			default -> L.t("haulback.status.to_chest");
 		};
 	}
 
@@ -744,7 +910,7 @@ public final class Collector {
 		IBaritone b = baritone();
 		if (!b.getCustomGoalProcess().isActive() && !b.getPathingBehavior().isPathing() && ticks > 40) {
 			if (++pathRetries > 6) {
-				stop("Impossible d'atteindre le coffre en " + fmt(chest) + ".");
+				stop(L.t("haulback.msg.chest_unreachable") + fmt(chest) + ".");
 				return;
 			}
 			b.getCustomGoalProcess().setGoalAndPath(new GoalGetToBlock(chest));
@@ -758,7 +924,7 @@ public final class Collector {
 			if (!Look.towards(p, Vec3.atCenterOf(chest)) && ticks < 40) return;
 			if (ticks % 20 == 1 || ticks == 40 || openTries == 0) {
 				if (++openTries > 6) {
-					stop("Le coffre en " + fmt(chest) + " ne s'ouvre pas (bloc manquant ou bloqué ?).");
+					stop(L.t("haulback.msg.chest_at") + fmt(chest) + L.t("haulback.msg.chest_wont_open"));
 					return;
 				}
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(chest), Direction.UP, chest, false);
@@ -775,7 +941,7 @@ public final class Collector {
 			afterChest();
 			return;
 		}
-		status = visit == Visit.RESTOCK ? "Prend les matériaux" : "Range dans le coffre";
+		status = visit == Visit.RESTOCK ? L.t("haulback.status.taking") : L.t("haulback.status.storing");
 		if (ticks % 2 != 0) return; // une action tous les 2 ticks, pour rester discret
 		Slot next = nextDeposit(menu, p);
 		if (next != null) {
@@ -875,7 +1041,7 @@ public final class Collector {
 			case SURVEY -> goChest(Visit.SURVEY);
 			case DEPOSIT -> {
 				if (chestFull) {
-					say("Coffre plein, passage au suivant.", ChatFormatting.GRAY);
+					say(L.t("haulback.msg.chest_full_next"), ChatFormatting.GRAY);
 					goChest(Visit.DEPOSIT);
 				} else if (restAfterDeposit) {
 					restAfterDeposit = false;
@@ -889,8 +1055,8 @@ public final class Collector {
 					goChest(Visit.DEPOSIT_FINAL);
 					return;
 				}
-				if (buildFile != null && finishReason == null) {
-					goChest(Visit.RESTOCK);
+				if (finishReason == null) {
+					nextStage();
 				} else {
 					goHome();
 				}
@@ -898,13 +1064,13 @@ public final class Collector {
 			case RESTOCK -> {
 				boolean haveAny = buildItems.stream().anyMatch(it -> total(mc.player, it) > 0);
 				if (withdrawn == 0 && !haveAny) {
-					finishReason = "Il n'y a plus de matériaux pour la construction dans les coffres.";
+					finishReason = L.t("haulback.msg.no_more_build_mats");
 					goHome();
 					return;
 				}
 				restockEmpty = withdrawn == 0 ? restockEmpty + 1 : 0;
 				if (restockEmpty >= 2) {
-					finishReason = "Construction en pause : il manque des matériaux dans le coffre.";
+					finishReason = L.t("haulback.msg.build_paused");
 					goHome();
 					return;
 				}
@@ -919,7 +1085,7 @@ public final class Collector {
 			startEating(Phase.RESTING);
 			return;
 		}
-		status = "Repos à la base (" + (int) p.getHealth() + " PV)";
+		status = L.t("haulback.status.resting") + (int) p.getHealth() + L.t("haulback.status.hp");
 		if (p.getHealth() >= 16 || ticks > 2400) {
 			enterMining();
 		}
@@ -931,14 +1097,14 @@ public final class Collector {
 		IBaritone b = baritone();
 		if (!buildIssued) {
 			if (!b.getBuilderProcess().build("haulback", buildFile, buildOrigin)) {
-				stop("Schematic illisible par Baritone : " + buildFile.getName());
+				stop(L.t("haulback.msg.schematic_unreadable") + buildFile.getName());
 				return;
 			}
 			buildIssued = true;
 			ticks = 0;
 			return;
 		}
-		status = "Construction en cours";
+		status = L.t("haulback.status.building");
 		if (p.getHealth() <= HaulbackConfig.get().retreatHealth && needsFood(p) && findFoodSlot(p) >= 0) {
 			startEating(Phase.BUILDING);
 			return;
@@ -949,12 +1115,24 @@ public final class Collector {
 		}
 		if (ticks < 40) return;
 		if (b.getBuilderProcess().isPaused()) {
-			say("Il manque des blocs, passage au coffre.", ChatFormatting.GRAY);
-			goChest(Visit.RESTOCK);
+			// on a les blocs mais Baritone ne trouve pas d'endroit d'ou les poser dans le bon sens :
+			// on accepte une orientation approchee plutot que de bloquer
+			boolean haveItems = buildItems.stream().anyMatch(it -> total(p, it) > 0);
+			if (haveItems && !BaritoneAPI.getSettings().buildIgnoreDirection.value) {
+				say(L.t("haulback.msg.orientation_fallback"), ChatFormatting.GOLD);
+				BaritoneAPI.getSettings().buildIgnoreDirection.value = true;
+				b.getBuilderProcess().resume();
+				ticks = 0;
+				return;
+			}
+			// des blocs mal poses ont pu etre casses et tomber : on les ramasse avant le coffre
+			say(L.t("haulback.msg.build_pickup"), ChatFormatting.GRAY);
+			startPickup(Visit.RESTOCK);
 			return;
 		}
 		if (!b.getBuilderProcess().isActive()) {
-			finishReason = "Construction terminée.";
+			finishReason = L.t("haulback.msg.build_done");
+			buildDone = true;
 			goHome();
 		}
 	}
@@ -966,25 +1144,25 @@ public final class Collector {
 		baritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(home));
 		pathRetries = 0;
 		setPhase(Phase.TO_HOME);
-		status = "Retour au point A";
+		status = L.t("haulback.status.going_home");
 	}
 
 	private void tickToHome(LocalPlayer p) {
 		Vec3 c = Vec3.atBottomCenterOf(home);
 		if (p.position().distanceTo(c) < 1.5) {
 			baritone().getPathingBehavior().cancelEverything();
-			String msg = finishReason != null ? finishReason : "Mission terminée.";
+			String msg = finishReason != null ? finishReason : L.t("haulback.msg.mission_done");
 			phase = Phase.IDLE;
 			status = msg;
 			endedAt = System.currentTimeMillis();
-			endedWell = finishReason == null || finishReason.startsWith("Construction termin");
-			say(msg + " Revenu au point A.", ChatFormatting.GREEN);
+			endedWell = finishReason == null || buildDone;
+			say(msg + L.t("haulback.msg.back_home"), ChatFormatting.GREEN);
 			return;
 		}
 		IBaritone b = baritone();
 		if (!b.getCustomGoalProcess().isActive() && !b.getPathingBehavior().isPathing() && ticks > 40) {
 			if (++pathRetries > 6) {
-				stop("Impossible de revenir au point A " + fmt(home) + ".");
+				stop(L.t("haulback.msg.home_unreachable") + fmt(home) + ".");
 				return;
 			}
 			b.getCustomGoalProcess().setGoalAndPath(new GoalBlock(home));
@@ -1001,6 +1179,7 @@ public final class Collector {
 		buildFile = null;
 		buildOrigin = null;
 		finishReason = null;
+		buildDone = false;
 		mineGiveUps = 0;
 		stuckCount = 0;
 		restockEmpty = 0;
@@ -1008,6 +1187,9 @@ public final class Collector {
 		chests.clear();
 		fullChests.clear();
 		surveyQueue.clear();
+		stages.clear();
+		stage = null;
+		toolsMidGather = false;
 		buildIssued = false;
 	}
 
@@ -1046,6 +1228,7 @@ public final class Collector {
 		s.legitMine.value = false;
 		s.pauseMiningForFallingBlocks.value = true;
 		s.antiCheatCompatibility.value = true;
+		s.buildIgnoreDirection.value = false;
 		// comportement "humain" : la camera suit la marche et le minage, rotations lissees
 		s.freeLook.value = false;
 		s.blockFreeLook.value = false;

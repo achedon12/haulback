@@ -1,5 +1,6 @@
 package fr.achedon12.haulback.ui;
 
+import fr.achedon12.haulback.L;
 import fr.achedon12.haulback.Collector;
 import fr.achedon12.haulback.job.Target;
 import net.minecraft.client.DeltaTracker;
@@ -84,7 +85,7 @@ public final class Hud {
 		float pulse = lingering ? 1f : 0.55f + 0.45f * (float) Math.sin(now / 260.0);
 		dot(g, cx + 2, cy + 3, mul(glow(accent, (int) (0x55 * pulse)), alpha), mul(accent, alpha));
 		drawSpaced(g, f, "HAULBACK", cx + 9, cy, mul(0xFFE9EBEE, alpha));
-		String phase = lingering ? (c.endedWell() ? "terminé" : "arrêté") : phaseLabel(c.phase());
+		String phase = lingering ? (c.endedWell() ? L.t("haulback.hud.done") : L.t("haulback.hud.stopped")) : phaseLabel(c.phase());
 		int pw = f.width(phase) + 8;
 		roundRect(g, right - pw, cy - 2, pw, 11, mul(glow(accent, 0x2E), alpha));
 		g.drawString(f, phase, right - pw + 4, cy, mul(accent, alpha), false);
@@ -96,7 +97,7 @@ public final class Hud {
 		if (lingering && c.endedWell()) pct = "OK";
 		else if (building && ts.stream().allMatch(Target::done)) pct = "";
 		else pct = Math.round(shownTotal * 100) + "%";
-		String st = lingering ? (c.endedWell() ? "Revenu au point A" : c.status()) : c.status();
+		String st = lingering ? (c.endedWell() ? L.t("haulback.hud.back_home") : c.status()) : c.status();
 		g.drawString(f, f.plainSubstrByWidth(st, W - 20 - f.width(pct) - 6), cx, sy, mul(0xFFC9CDD3, alpha), false);
 		g.drawString(f, pct, right - f.width(pct), sy, mul(0xFFFFFFFF, alpha), false);
 		int by = sy + 11;
@@ -136,7 +137,7 @@ public final class Hud {
 				ry += 13;
 			}
 			if (ts.size() > rows) {
-				g.drawString(f, "+ " + (ts.size() - rows) + " autres", cx + 14, ry, mul(0xFF5C636D, alpha), false);
+				g.drawString(f, "+ " + (ts.size() - rows) + L.t("haulback.hud.others"), cx + 14, ry, mul(0xFF5C636D, alpha), false);
 				ry += 10;
 			}
 		}
@@ -170,10 +171,10 @@ public final class Hud {
 
 	private static String subline(LocalPlayer p, boolean building) {
 		if (p == null) return "";
-		if (building) return "Baritone pose les blocs";
+		if (building) return L.t("haulback.hud.placing");
 		int free = 0;
 		for (int i = 0; i < 36; i++) if (p.getInventory().getItem(i).isEmpty()) free++;
-		return free + " cases libres";
+		return free + L.t("haulback.hud.free_slots");
 	}
 
 	private static String distances(LocalPlayer p, Collector c) {
@@ -181,7 +182,7 @@ public final class Hud {
 		StringBuilder sb = new StringBuilder();
 		BlockPos chest = c.chest();
 		BlockPos home = c.home();
-		if (chest != null) sb.append("coffre ").append(dist(p, chest)).append("m");
+		if (chest != null) sb.append(L.t("haulback.hud.chest")).append(dist(p, chest)).append("m");
 		if (home != null) {
 			if (!sb.isEmpty()) sb.append("  ");
 			sb.append("A ").append(dist(p, home)).append("m");
@@ -202,16 +203,17 @@ public final class Hud {
 
 	static String phaseLabel(Collector.Phase p) {
 		return switch (p) {
-			case IDLE -> "inactif";
-			case MINING -> "récolte";
-			case PICKUP -> "ramassage";
-			case EATING -> "repas";
-			case TO_CHEST -> "vers coffre";
-			case AT_CHEST -> "coffre";
-			case RESTING -> "repos";
-			case BUILDING -> "construction";
-			case TO_HOME -> "retour A";
-			default -> "outils";
+			case IDLE -> L.t("haulback.hud.idle");
+			case MINING -> L.t("haulback.hud.gathering");
+			case PICKUP -> L.t("haulback.hud.pickup");
+			case EATING -> L.t("haulback.hud.eating");
+			case TO_CHEST -> L.t("haulback.hud.to_chest");
+			case AT_CHEST -> L.t("haulback.hud.at_chest");
+			case RESTING -> L.t("haulback.hud.resting");
+			case BUILDING -> L.t("haulback.hud.building");
+			case TO_HOME -> L.t("haulback.hud.going_home");
+			case WORKSHOP -> L.t("haulback.hud.workshop");
+			default -> L.t("haulback.hud.tools");
 		};
 	}
 

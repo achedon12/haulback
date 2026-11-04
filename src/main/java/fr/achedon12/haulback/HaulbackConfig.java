@@ -30,6 +30,10 @@ public final class HaulbackConfig {
 	/** Se defendre contre les monstres. */
 	public boolean fight = true;
 
+	/** Atelier pose par le bot (etabli et fours), reutilise d'une mission a l'autre. */
+	public int[] workshopTable;
+	public List<int[]> workshopFurnaces = new ArrayList<>();
+
 	/** Rayon maximum autour du point de depart, en blocs. */
 	public int maxRadius = 192;
 	/** En dessous de ces PV (sur 20), le bot rentre a la base. */
@@ -54,6 +58,7 @@ public final class HaulbackConfig {
 				HaulbackConfig c = GSON.fromJson(Files.readString(FILE), HaulbackConfig.class);
 				if (c != null) {
 					if (c.chests == null) c.chests = new ArrayList<>();
+					if (c.workshopFurnaces == null) c.workshopFurnaces = new ArrayList<>();
 					if (c.chest != null && c.chests.isEmpty()) c.chests.add(c.chest);
 					c.chest = null;
 					return c;

@@ -46,7 +46,12 @@ public final class ToolCrafter {
 	private enum Step {GET_LOGS, CRAFT_SMALL, PLACE_TABLE, OPEN_TABLE, CRAFT_TABLE, GET_STONE, TO_TABLE, PICK_TABLE, DONE}
 
 	/** Une recette : grille (largeur 2 ou 3) + ingredient par case (null = vide). */
-	private record Recipe(String name, Item output, int width, List<Predicate<ItemStack>> grid) {}
+	private record Recipe(String name, Item output, int width, List<Predicate<ItemStack>> grid) {
+		/** Nom affiche : celui de l'objet produit, sinon la cle de traduction. */
+		String label() {
+			return output != Items.AIR ? output.getName().getString() : L.t(name);
+		}
+	}
 
 	private static final Predicate<ItemStack> LOG = s -> s.is(ItemTags.LOGS);
 	private static final Predicate<ItemStack> PLANK = s -> s.is(ItemTags.PLANKS);
@@ -66,17 +71,17 @@ public final class ToolCrafter {
 		return new Recipe(name, out, 3, g);
 	}
 
-	private static final Recipe PLANKS = r2("planches", LOG, null, null, null);
-	private static final Recipe STICKS = r2("bâtons", PLANK, null, PLANK, null);
-	private static final Recipe TABLE = r2("établi", PLANK, PLANK, PLANK, PLANK);
-	private static final Recipe WOOD_PICK = r3("pioche en bois", Items.WOODEN_PICKAXE, PLANK, PLANK, PLANK, null, STICK, null, null, STICK, null);
-	private static final Recipe WOOD_AXE = r3("hache en bois", Items.WOODEN_AXE, PLANK, PLANK, null, PLANK, STICK, null, null, STICK, null);
-	private static final Recipe WOOD_SWORD = r3("épée en bois", Items.WOODEN_SWORD, null, PLANK, null, null, PLANK, null, null, STICK, null);
-	private static final Recipe WOOD_SHOVEL = r3("pelle en bois", Items.WOODEN_SHOVEL, null, PLANK, null, null, STICK, null, null, STICK, null);
-	private static final Recipe STONE_PICK = r3("pioche en pierre", Items.STONE_PICKAXE, STONE, STONE, STONE, null, STICK, null, null, STICK, null);
-	private static final Recipe STONE_AXE = r3("hache en pierre", Items.STONE_AXE, STONE, STONE, null, STONE, STICK, null, null, STICK, null);
-	private static final Recipe STONE_SWORD = r3("épée en pierre", Items.STONE_SWORD, null, STONE, null, null, STONE, null, null, STICK, null);
-	private static final Recipe STONE_SHOVEL = r3("pelle en pierre", Items.STONE_SHOVEL, null, STONE, null, null, STICK, null, null, STICK, null);
+	private static final Recipe PLANKS = r2("haulback.tool.planks", LOG, null, null, null);
+	private static final Recipe STICKS = r2("haulback.tool.sticks", PLANK, null, PLANK, null);
+	private static final Recipe TABLE = r2("haulback.tool.table", PLANK, PLANK, PLANK, PLANK);
+	private static final Recipe WOOD_PICK = r3(null, Items.WOODEN_PICKAXE, PLANK, PLANK, PLANK, null, STICK, null, null, STICK, null);
+	private static final Recipe WOOD_AXE = r3(null, Items.WOODEN_AXE, PLANK, PLANK, null, PLANK, STICK, null, null, STICK, null);
+	private static final Recipe WOOD_SWORD = r3(null, Items.WOODEN_SWORD, null, PLANK, null, null, PLANK, null, null, STICK, null);
+	private static final Recipe WOOD_SHOVEL = r3(null, Items.WOODEN_SHOVEL, null, PLANK, null, null, STICK, null, null, STICK, null);
+	private static final Recipe STONE_PICK = r3(null, Items.STONE_PICKAXE, STONE, STONE, STONE, null, STICK, null, null, STICK, null);
+	private static final Recipe STONE_AXE = r3(null, Items.STONE_AXE, STONE, STONE, null, STONE, STICK, null, null, STICK, null);
+	private static final Recipe STONE_SWORD = r3(null, Items.STONE_SWORD, null, STONE, null, null, STONE, null, null, STICK, null);
+	private static final Recipe STONE_SHOVEL = r3(null, Items.STONE_SHOVEL, null, STONE, null, null, STICK, null, null, STICK, null);
 
 	private final Minecraft mc = Minecraft.getInstance();
 
@@ -120,6 +125,19 @@ public final class ToolCrafter {
 	 * Prepare le plan. Renvoie false s'il n'y a rien a fabriquer.
 	 * Si un outil en fer (ou mieux) est requis et absent, {@link #failure()} est rempli.
 	 */
+	/** Batons en plus a fabriquer (pour une future pioche en fer / diamant faite a l'atelier). */
+	public int extraSticks;
+
+	/** Niveau de pioche exige par les cibles : 0 bois, 1 pierre, 2 fer, 3 diamant. */
+	public static int requiredTier(List<Target> targets) {
+		int t = 0;
+		for (Target x : targets) for (Block b : x.sources) {
+			BlockState st = b.defaultBlockState();
+			t = Math.max(t, st.is(BlockTags.NEEDS_DIAMOND_TOOL) ? 3 : st.is(BlockTags.NEEDS_IRON_TOOL) ? 2 : st.is(BlockTags.NEEDS_STONE_TOOL) ? 1 : 0);
+		}
+		return t;
+	}
+
 	public boolean plan(LocalPlayer p, List<Target> targets) {
 		failure = null;
 		stoneTools.clear();
@@ -137,15 +155,12 @@ public final class ToolCrafter {
 			}
 		}
 		int pickTier = bestPickTier(p);
-		if (requiredTier >= 2 && pickTier < requiredTier) {
-			failure = "Il faut une pioche en " + (requiredTier == 3 ? "diamant" : "fer") + " pour : "
-					+ String.join(", ", ironBlocks) + ". Mets-en une dans ton inventaire.";
-			return false;
-		}
+		// fer et diamant : geres par l'atelier apres les outils en pierre (voir Collector)
+		int stoneNeed = Math.min(requiredTier, 1);
 		// un outil deja present n'est jamais refabrique, sauf si son niveau est insuffisant
 		HaulbackConfig cfg = HaulbackConfig.get();
 		boolean stoneTier = cfg.toolTier >= 1;
-		boolean needPick = (cfg.toolPickaxe && pickTier < 0) || pickTier < requiredTier;
+		boolean needPick = (cfg.toolPickaxe && pickTier < 0) || pickTier < stoneNeed || (requiredTier >= 2 && pickTier < 1);
 		woodRecipes.clear();
 		if (needPick) {
 			// en pierre si demande, ou si les blocs l'exigent
@@ -158,7 +173,7 @@ public final class ToolCrafter {
 		// pour miner la pierre, il faut au moins une pioche : on en fait une en bois d'abord
 		woodPick = !stoneTools.isEmpty() && pickTier < 0 && !woodRecipes.contains(WOOD_PICK);
 		if (woodPick) woodRecipes.add(0, WOOD_PICK);
-		if (stoneTools.isEmpty() && woodRecipes.isEmpty()) return false;
+		if (stoneTools.isEmpty() && woodRecipes.isEmpty() && extraSticks <= 0) return false;
 
 		int sticks = 0, planksIn = 0, stone = 0;
 		List<Recipe> all = new ArrayList<>(woodRecipes);
@@ -170,8 +185,9 @@ public final class ToolCrafter {
 				else if (c == STONE) stone++;
 			}
 		}
+		sticks += extraSticks;
 		stickCrafts = (int) Math.ceil(Math.max(0, sticks - count(p, STICK)) / 4.0);
-		needTable = !has(p, s -> s.is(Items.CRAFTING_TABLE));
+		needTable = !all.isEmpty() && !has(p, s -> s.is(Items.CRAFTING_TABLE));
 		int planks = (needTable ? 4 : 0) + stickCrafts * 2 + planksIn;
 		plankCrafts = (int) Math.ceil(Math.max(0, planks - count(p, PLANK)) / 4.0);
 		logsNeeded = Math.max(0, plankCrafts - count(p, LOG));
@@ -181,9 +197,9 @@ public final class ToolCrafter {
 		List<String> names = new ArrayList<>();
 		for (Recipe r : all) {
 			planned.add(r.output);
-			names.add(r.name);
+			names.add(r.label());
 		}
-		Collector.get().say("Outils à fabriquer : " + String.join(", ", names) + ".", net.minecraft.ChatFormatting.GRAY);
+		Collector.get().say(L.t("haulback.msg.tools_to_craft") + String.join(", ", names) + ".", net.minecraft.ChatFormatting.GRAY);
 		return true;
 	}
 
@@ -226,7 +242,7 @@ public final class ToolCrafter {
 		switch (step) {
 			case GET_LOGS -> {
 				int have = count(p, LOG);
-				status = "Outils : bûches " + Math.min(have, logsNeeded) + "/" + logsNeeded;
+				status = L.t("haulback.status.tools_logs") + Math.min(have, logsNeeded) + "/" + logsNeeded;
 				if (have >= logsNeeded) {
 					b.getPathingBehavior().cancelEverything();
 					queue.clear();
@@ -237,23 +253,27 @@ public final class ToolCrafter {
 					return Result.RUNNING;
 				}
 				if (!b.getMineProcess().isActive()) {
-					if (ticks > 40 && ++retries > 3) return fail("Aucun arbre trouvé pour fabriquer les outils.");
+					if (ticks > 40 && ++retries > 3) return fail(L.t("haulback.msg.no_trees"));
 					b.getMineProcess().mine(logsNeeded, logBlocks());
 					ticks = 0;
 				}
 			}
 			case CRAFT_SMALL -> {
-				status = "Outils : fabrication (inventaire)";
+				status = L.t("haulback.status.tools_crafting_inv");
 				Result r = runQueue(p, p.inventoryMenu);
+				if (r == Result.DONE && woodRecipes.isEmpty() && stoneTools.isEmpty()) {
+					setStep(Step.DONE);
+					return Result.DONE;
+				}
 				if (r == Result.DONE) setStep(Step.PLACE_TABLE);
 				return r == Result.FAILED ? Result.FAILED : Result.RUNNING;
 			}
 			case PLACE_TABLE -> {
-				status = "Outils : pose de l'établi";
+				status = L.t("haulback.status.tools_place_table");
 				if (ticks == 1) {
 					tablePos = placeTable(p);
 					if (tablePos == null) {
-						if (++retries > 5) return fail("Impossible de poser l'établi ici.");
+						if (++retries > 5) return fail(L.t("haulback.msg.cannot_place_table"));
 						ticks = -20;
 					}
 				} else if (ticks > 5) {
@@ -262,25 +282,25 @@ public final class ToolCrafter {
 						queue.addAll(woodRecipes);
 						setStep(!woodRecipes.isEmpty() ? Step.OPEN_TABLE : Step.GET_STONE);
 					} else {
-						if (++retries > 5) return fail("Impossible de poser l'établi ici.");
+						if (++retries > 5) return fail(L.t("haulback.msg.cannot_place_table"));
 						ticks = -20;
 					}
 				}
 			}
 			case OPEN_TABLE -> {
-				status = "Outils : ouverture de l'établi";
+				status = L.t("haulback.status.tools_open_table");
 				if (craftingMenu() != null) {
 					craftStage = 0;
 					setStep(Step.CRAFT_TABLE);
 				} else if (Look.towards(p, Vec3.atCenterOf(tablePos)) && ticks % 20 >= 1) {
 					if (ticks % 20 == 1 || retries == 0) {
-						if (++retries > 6) return fail("L'établi ne s'ouvre pas.");
+						if (++retries > 6) return fail(L.t("haulback.msg.table_wont_open"));
 						useBlock(p, tablePos);
 					}
 				}
 			}
 			case CRAFT_TABLE -> {
-				status = "Outils : fabrication à l'établi";
+				status = L.t("haulback.status.tools_crafting_table");
 				CraftingMenu menu = craftingMenu();
 				if (menu == null) {
 					setStep(Step.OPEN_TABLE);
@@ -303,7 +323,7 @@ public final class ToolCrafter {
 			}
 			case GET_STONE -> {
 				int have = count(p, STONE);
-				status = "Outils : pierre " + Math.min(have, stoneNeeded) + "/" + stoneNeeded;
+				status = L.t("haulback.status.tools_stone") + Math.min(have, stoneNeeded) + "/" + stoneNeeded;
 				if (have >= stoneNeeded) {
 					b.getPathingBehavior().cancelEverything();
 					b.getCustomGoalProcess().setGoalAndPath(new GoalGetToBlock(tablePos));
@@ -311,14 +331,14 @@ public final class ToolCrafter {
 					return Result.RUNNING;
 				}
 				if (!b.getMineProcess().isActive()) {
-					if (ticks > 40 && ++retries > 3) return fail("Pas de pierre trouvée pour les outils.");
+					if (ticks > 40 && ++retries > 3) return fail(L.t("haulback.msg.no_stone"));
 					b.getMineProcess().mine(stoneNeeded + 4, Blocks.STONE, Blocks.COBBLESTONE, Blocks.DEEPSLATE,
 							Blocks.COBBLED_DEEPSLATE, Blocks.BLACKSTONE);
 					ticks = 0;
 				}
 			}
 			case TO_TABLE -> {
-				status = "Outils : retour à l'établi";
+				status = L.t("haulback.status.tools_back_to_table");
 				if (p.getEyePosition().distanceTo(Vec3.atCenterOf(tablePos)) < 4.2) {
 					b.getPathingBehavior().cancelEverything();
 					queue.clear();
@@ -326,18 +346,18 @@ public final class ToolCrafter {
 					stoneTools.clear();
 					setStep(Step.OPEN_TABLE);
 				} else if (!b.getCustomGoalProcess().isActive() && ticks > 40) {
-					if (++retries > 6) return fail("Impossible de revenir à l'établi.");
+					if (++retries > 6) return fail(L.t("haulback.msg.table_unreachable"));
 					b.getCustomGoalProcess().setGoalAndPath(new GoalGetToBlock(tablePos));
 					ticks = 0;
 				}
 			}
 			case PICK_TABLE -> {
-				status = "Outils : récupération de l'établi";
+				status = L.t("haulback.status.tools_pick_table");
 				if (!mc.level.getBlockState(tablePos).is(Blocks.CRAFTING_TABLE) || ticks > 300) {
 					mc.gameMode.stopDestroyBlock();
 					b.getPathingBehavior().cancelEverything();
 					setStep(Step.DONE);
-					Collector.get().say("Outils prêts.", net.minecraft.ChatFormatting.GREEN);
+					Collector.get().say(L.t("haulback.msg.tools_ready"), net.minecraft.ChatFormatting.GREEN);
 					return Result.DONE;
 				}
 				// on casse uniquement NOTRE etabli (jamais celui d'un autre joueur)
@@ -407,7 +427,7 @@ public final class ToolCrafter {
 					Slot src = findInventorySlot(p, menu, need);
 					if (src == null) {
 						clearGrid(p, menu);
-						return fail("Ingrédient manquant pour : " + r.name + ".");
+						return fail(L.t("haulback.msg.missing_ingredient") + r.label() + ".");
 					}
 					click(p, menu, src.index, 0, ClickType.PICKUP);
 					click(p, menu, gridSlot, 1, ClickType.PICKUP);
@@ -422,7 +442,7 @@ public final class ToolCrafter {
 					craftStage = 5;
 				} else if (++retries > 20) {
 					clearGrid(p, menu);
-					return fail("La recette « " + r.name + " » n'a rien donné.");
+					return fail(L.t("haulback.msg.recipe_q") + r.label() + L.t("haulback.msg.recipe_nothing"));
 				}
 			}
 			case 5 -> {

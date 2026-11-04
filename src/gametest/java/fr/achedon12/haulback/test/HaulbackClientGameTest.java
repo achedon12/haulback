@@ -180,6 +180,62 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			ctx.takeScreenshot("haulback-fin");
 			if (placed < 9) throw new AssertionError("Seulement " + placed + "/9 planches posees (statut : " + status2 + ")");
 
+			// --- 2b. atelier : verre (cuisson) + escaliers (fabrication) a partir de matieres premieres
+			ctx.runOnClient(mc -> {
+				HaulbackConfig.get().workshopTable = null;
+				HaulbackConfig.get().workshopFurnaces.clear();
+			});
+			sp.getServer().runOnServer(s -> {
+				for (BlockPos c : List.of(chest, chest2)) {
+					if (s.overworld().getBlockEntity(c) instanceof ChestBlockEntity ce) ce.clearContent();
+				}
+				if (s.overworld().getBlockEntity(chest) instanceof ChestBlockEntity c) {
+					c.setItem(0, new ItemStack(Items.SAND, 8));
+					c.setItem(1, new ItemStack(Items.COAL, 3));
+					c.setItem(2, new ItemStack(Items.OAK_LOG, 6));
+					c.setItem(3, new ItemStack(Items.COBBLESTONE, 10));
+					c.setChanged();
+				}
+			});
+			File shop = ctx.computeOnClient(mc -> writeShopSchematic(new File(mc.gameDirectory, "schematics/vitrine.schem")));
+			SchematicReader.Result shopData = ctx.computeOnClient(mc -> SchematicReader.read(shop));
+			BlockPos shopOrigin = home.offset(4, 0, -9);
+			ctx.runOnClient(mc -> Collector.get().start(
+					stock -> fr.achedon12.haulback.job.SchematicPlanner.plan(shopData.items(), Set.of(), false, stock),
+					true, shop, shopOrigin, shopData.items().keySet()));
+			ctx.waitTicks(200);
+			ctx.takeScreenshot("haulback-hud-atelier");
+			ctx.waitFor(mc -> !Collector.get().active(), 20 * 300);
+			String statusA = ctx.computeOnClient(mc -> Collector.get().status());
+			int[] shopPlaced = sp.getServer().computeOnServer(s -> {
+				int glass = 0, stairs = 0;
+				for (int x = 0; x < 3; x++) for (int z = 0; z < 3; z++) {
+					var st = s.overworld().getBlockState(shopOrigin.offset(x, 0, z));
+					if (st.is(Blocks.GLASS)) glass++;
+					if (st.is(Blocks.OAK_STAIRS)) stairs++;
+				}
+				return new int[]{glass, stairs};
+			});
+			System.out.println("[HAULBACK-TEST] atelier : statut=\"" + statusA + "\" verre=" + shopPlaced[0] + "/5 escaliers=" + shopPlaced[1] + "/4");
+			if (shopPlaced[0] < 5 || shopPlaced[1] < 4) throw new AssertionError("Atelier incomplet : verre " + shopPlaced[0] + "/5, escaliers " + shopPlaced[1] + "/4 (statut : " + statusA + ")");
+
+			// --- 2c. pioche en fer : on demande du diamant avec seulement des outils en pierre
+			sp.getServer().runOnServer(s -> {
+				ServerLevel lvl = s.overworld();
+				for (int i = 0; i < 4; i++) lvl.setBlockAndUpdate(home.offset(-10 + i, -1, -12), Blocks.IRON_ORE.defaultBlockState());
+				lvl.setBlockAndUpdate(home.offset(-5, -1, -12), Blocks.COAL_ORE.defaultBlockState());
+				lvl.setBlockAndUpdate(home.offset(-4, -1, -12), Blocks.COAL_ORE.defaultBlockState());
+				lvl.setBlockAndUpdate(home.offset(-2, -1, -12), Blocks.DIAMOND_ORE.defaultBlockState());
+				for (int y = 0; y < 3; y++) lvl.setBlockAndUpdate(home.offset(-12, y, -6), Blocks.OAK_LOG.defaultBlockState());
+			});
+			ctx.runOnClient(mc -> Collector.get().start(List.of(Target.ofBlock(Blocks.DIAMOND_ORE, 1)), null, null, null));
+			ctx.waitFor(mc -> !Collector.get().active(), 20 * 300);
+			String statusB = ctx.computeOnClient(mc -> Collector.get().status());
+			boolean ironPick = ctx.computeOnClient(mc -> mc.player.getInventory().contains(st -> st.is(Items.IRON_PICKAXE)));
+			int diamonds = sp.getServer().computeOnServer(s -> count(s, chest, Items.DIAMOND) + count(s, chest2, Items.DIAMOND));
+			System.out.println("[HAULBACK-TEST] fer : statut=\"" + statusB + "\" pioche_fer=" + ironPick + " diamants_au_coffre=" + diamonds);
+			if (!ironPick || diamonds < 1) throw new AssertionError("Chaine pioche en fer incomplete (statut : " + statusB + ")");
+
 			// --- 3. combat : un zombie au contact et un squelette a distance
 			sp.getServer().runCommand("time set 18000");
 			sp.getServer().runCommand("difficulty easy");
@@ -244,6 +300,27 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			}
 		}
 		return n;
+	}
+
+	/** Vitrine 3x1x3 : 5 vitres (verre) et 4 escaliers en chene. */
+	private static File writeShopSchematic(File f) throws Exception {
+		f.getParentFile().mkdirs();
+		byte[] data = new byte[9];
+		for (int i = 0; i < 9; i++) data[i] = (byte) (i % 2 == 0 ? 0 : 1);
+		CompoundTag root = new CompoundTag();
+		root.putInt("Version", 2);
+		root.putInt("DataVersion", SharedConstants.getCurrentVersion().dataVersion().version());
+		root.putShort("Width", (short) 3);
+		root.putShort("Height", (short) 1);
+		root.putShort("Length", (short) 3);
+		CompoundTag palette = new CompoundTag();
+		palette.putInt("minecraft:glass", 0);
+		palette.putInt("minecraft:oak_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]", 1);
+		root.put("Palette", palette);
+		root.putInt("PaletteMax", 2);
+		root.putByteArray("BlockData", data);
+		NbtIo.writeCompressed(root, f.toPath());
+		return f;
 	}
 
 	/** Petite maison de demo (plusieurs materiaux) pour la capture d'ecran. */

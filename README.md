@@ -53,13 +53,16 @@ Haulback is **client-side only**: nothing to install on the server.
 |---|---|
 | `H` | Open the interface |
 | `J` | Add or remove the chest you are looking at |
+| `K` | Stop the running mission, or restart the last one |
 
 1. Look at a chest and press `J` (repeat to add more).
 2. Open the interface with `H`, pick blocks or a schematic.
-3. To build, stand where the schematic should start and click "Ma position".
-4. Start. The HUD in the top-left corner tracks the mission; "Arrêter" in the interface (or Baritone's `#stop`) cancels it.
+3. For a schematic, pick a mode: **Materials** (gather and process only), **Build** (build from what is in your chests) or **Both**. To build, stand where the schematic should start and click **My position**.
+4. Start. The HUD in the top-left corner tracks the mission; `K`, **Stop** in the interface or `/haulback stop` cancels it.
 
-Schematics go into the game's `schematics` folder ("Dossier" button in the interface). The in-game interface is currently in French; see the [wiki](https://github.com/achedon12/haulback/wiki) for a full walkthrough.
+Keys are rebindable in Options > Controls. The `/haulback` command (alias `/hb`) offers `start`, `stop`, `toggle`, `status`, `open` and `chest add|list|clear`.
+
+Schematics go into the game's `schematics` folder (**Folder** button in the interface). The interface is available in English and French and follows your game language. See the [wiki](https://github.com/achedon12/haulback/wiki) for a full walkthrough.
 
 ## Known limitations
 
