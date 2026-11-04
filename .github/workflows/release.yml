@@ -51,23 +51,6 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Use the tagged sources when re-uploading an existing version
-        if: steps.v.outputs.exists == 'true' && steps.v.outputs.publish == 'true'
-        env:
-          TAG: ${{ steps.v.outputs.tag }}
-        run: |
-          git checkout --quiet "$TAG"
-
-      - uses: actions/setup-java@v5
-        if: steps.v.outputs.publish == 'true'
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Build
-        if: steps.v.outputs.publish == 'true'
-        run: ./gradlew build --no-daemon
-
       - name: Release notes from CHANGELOG.md
         if: steps.v.outputs.publish == 'true'
         env:
@@ -87,6 +70,25 @@ jobs:
             echo
             cat notes.md
           } > release-notes.md
+
+
+      - name: Use the tagged sources when re-uploading an existing version
+        if: steps.v.outputs.exists == 'true' && steps.v.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          git checkout --quiet "$TAG"
+
+      - uses: actions/setup-java@v5
+        if: steps.v.outputs.publish == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build
+        if: steps.v.outputs.publish == 'true'
+        run: |
+          ./gradlew build --no-daemon
           echo "JAR=$(ls build/libs/haulback-*.jar | grep -v sources | head -1)" >> "$GITHUB_ENV"
 
       - name: GitHub release
