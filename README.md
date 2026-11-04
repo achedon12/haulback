@@ -72,7 +72,7 @@ Schematics go into the game's `schematics` folder (**Folder** button in the inte
 
 ## Known limitations
 
-- Netherite is out of scope: the bot stops at diamond tools.
+- Netherite ingots are planned and crafted (ancient debris, smelting, gold), but upgrading tools at a smithing table is not automated yet.
 - Items that cannot be crafted or smelted from mined blocks (wool, dyes, mob drops...) are listed as "to provide yourself"; you can force a direct search for them.
 - Baritone mines whatever matching blocks it finds: on a shared server it may break a build made of the same blocks. Keep a sensible radius.
 - A bot is still a bot: check that your server's rules allow it.

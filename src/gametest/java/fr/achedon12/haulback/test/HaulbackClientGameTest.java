@@ -291,6 +291,37 @@ public class HaulbackClientGameTest implements FabricClientGameTest {
 			System.out.println("[HAULBACK-TEST] skeleton: left=" + skel + " hp=" + hp2);
 			ctx.waitFor(mc -> !Collector.get().active(), 20 * 120);
 			if (skel > 0) throw new AssertionError("The skeleton is still alive");
+
+			// --- 5. netherite planning, and piglins are left alone when wearing gold
+			checkNetherPlanning();
+			sp.getServer().runCommand("item replace entity @a armor.head with golden_helmet");
+			BlockPos here3 = sp.getServer().computeOnServer(s -> s.getPlayerList().getPlayers().get(0).blockPosition());
+			sp.getServer().runCommand("summon piglin " + (here3.getX() + 3) + " " + here3.getY() + " " + here3.getZ()
+					+ " {IsImmuneToZombification:1b,PersistenceRequired:1b}");
+			ctx.waitTicks(5);
+			ctx.runOnClient(mc -> Collector.get().start(List.of(Target.ofBlock(Blocks.OAK_LOG, 1)), null, null, null));
+			ctx.waitTicks(200);
+			int piglinHurt = sp.getServer().computeOnServer(s -> {
+				var list = s.overworld().getEntitiesOfClass(net.minecraft.world.entity.monster.piglin.Piglin.class,
+						new net.minecraft.world.phys.AABB(here3).inflate(30));
+				if (list.isEmpty()) return -1;
+				return list.get(0).getHealth() < list.get(0).getMaxHealth() ? 1 : 0;
+			});
+			ctx.runOnClient(mc -> Collector.get().stop("test"));
+			System.out.println("[HAULBACK-TEST] piglin: hurt=" + piglinHurt);
+			if (piglinHurt != 0) throw new AssertionError("The bot attacked a piglin while wearing gold (" + piglinHurt + ")");
+		}
+	}
+
+	/** Planning only: netherite ingots resolve to ancient debris (smelted) and gold. */
+	private static void checkNetherPlanning() {
+		Materials.Plan p = Materials.resolve(Map.of(Items.NETHERITE_INGOT, 1), Set.of());
+		List<Item> steps = p.steps.stream().map(Materials.Step::item).toList();
+		boolean debris = p.targets.stream().anyMatch(t -> t.sources.contains(Blocks.ANCIENT_DEBRIS) && t.needed == 4);
+		boolean gold = p.targets.stream().anyMatch(t -> t.sources.contains(Blocks.GOLD_ORE));
+		System.out.println("[HAULBACK-TEST] netherite planning: targets=" + p.targets.stream().map(t -> t.label + " x" + t.needed).toList() + " steps=" + steps);
+		if (!debris || !gold || !steps.contains(Items.NETHERITE_SCRAP) || !steps.contains(Items.NETHERITE_INGOT)) {
+			throw new AssertionError("Netherite planning is wrong");
 		}
 	}
 
