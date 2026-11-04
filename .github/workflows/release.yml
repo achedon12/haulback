@@ -56,8 +56,6 @@ jobs:
         env:
           TAG: ${{ steps.v.outputs.tag }}
         run: |
-          workflow=$(mktemp)
-          cp .github/workflows/release.yml "$workflow"
           git checkout --quiet "$TAG"
 
       - uses: actions/setup-java@v5
