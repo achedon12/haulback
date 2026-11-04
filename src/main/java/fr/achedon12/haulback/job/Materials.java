@@ -72,6 +72,7 @@ public final class Materials {
 			"calcite", "netherrack", "end_stone", "basalt", "smooth_basalt", "blackstone", "soul_sand", "soul_soil",
 			"magma_block", "obsidian", "crying_obsidian", "dripstone_block", "mud", "moss_block", "pumpkin", "cactus",
 			"sugar_cane", "bamboo", "amethyst_block", "nether_wart_block", "warped_wart_block", "shroomlight",
+			"ancient_debris", "gilded_blackstone", "crimson_nylium", "warped_nylium",
 			"white_terracotta", "orange_terracotta", "yellow_terracotta", "brown_terracotta", "red_terracotta",
 			"light_gray_terracotta", "sculk_vein", "pointed_dripstone", "cobweb", "mushroom_stem");
 
@@ -173,6 +174,17 @@ public final class Materials {
 			RECIPES.put(c + "_concrete_powder", new Recipe(List.of(new Ingredient("sand", 0.5), new Ingredient("gravel", 0.5),
 					new Ingredient(c + "_dye", 0.125)), craft));
 		}
+		// netherite: ancient debris needs a diamond pickaxe (handled by the tool chain)
+		recipe("netherite_scrap", smelt, "ancient_debris", 1);
+		RECIPES.put("netherite_ingot", new Recipe(List.of(new Ingredient("netherite_scrap", 4), new Ingredient("gold_ingot", 4)), craft));
+		recipe("netherite_block", craft, "netherite_ingot", 9);
+		// nether blocks
+		RECIPES.put("red_nether_bricks", new Recipe(List.of(new Ingredient("nether_brick", 2), new Ingredient("nether_wart", 2)), craft));
+		recipe("chiseled_nether_bricks", craft, "nether_bricks", 1);
+		recipe("cracked_nether_bricks", smelt, "nether_bricks", 1);
+		recipe("chiseled_polished_blackstone", craft, "blackstone", 1);
+		recipe("cracked_polished_blackstone_bricks", smelt, "polished_blackstone_bricks", 1);
+		recipe("chiseled_quartz_block", craft, "quartz_block", 1);
 		recipe("crafting_table", craft, "oak_planks", 4);
 		recipe("chest", craft, "oak_planks", 8);
 		recipe("barrel", craft, "oak_planks", 7);

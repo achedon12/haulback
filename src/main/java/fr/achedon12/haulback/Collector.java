@@ -21,7 +21,10 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.piglin.AbstractPiglin;
+import net.minecraft.world.entity.monster.piglin.PiglinBrute;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.tags.ItemTags;
@@ -488,18 +491,30 @@ public final class Collector {
 		AABB box = p.getBoundingBox().inflate(radius, 3, radius);
 		// neutral mobs (endermen, zombified piglins...) are never provoked
 		List<Mob> mobs = mc.level.getEntitiesOfClass(Mob.class, box,
-				e -> e instanceof Enemy && !(e instanceof NeutralMob) && e.isAlive() && p.hasLineOfSight(e)
-						&& e.distanceTo(p) <= radius);
+				e -> e instanceof Enemy && !(e instanceof NeutralMob) && !peacefulPiglin(p, e) && e.isAlive()
+						&& p.hasLineOfSight(e) && e.distanceTo(p) <= radius);
 		if (mobs.isEmpty()) return null;
 		mobs.sort((x, y) -> Double.compare(x.distanceToSqr(p), y.distanceToSqr(p)));
 		return mobs.get(0);
+	}
+
+	/**
+	 * Piglins leave a player wearing gold armor alone; hitting one would turn the whole group hostile.
+	 * Piglin brutes are always hostile.
+	 */
+	private static boolean peacefulPiglin(LocalPlayer p, Mob e) {
+		if (!(e instanceof AbstractPiglin) || e instanceof PiglinBrute) return false;
+		for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+			if (p.getItemBySlot(slot).is(ItemTags.PIGLIN_SAFE_ARMOR)) return true;
+		}
+		return false;
 	}
 
 	/** Ranged attackers (skeletons, strays, pillagers, blazes...) that can see us, even from afar. */
 	private Mob nearestRanged(LocalPlayer p, double radius) {
 		AABB box = p.getBoundingBox().inflate(radius, 6, radius);
 		List<Mob> mobs = mc.level.getEntitiesOfClass(Mob.class, box,
-				e -> e instanceof RangedAttackMob && e instanceof Enemy && !(e instanceof NeutralMob)
+				e -> e instanceof RangedAttackMob && e instanceof Enemy && !(e instanceof NeutralMob) && !peacefulPiglin(p, e)
 						&& e.isAlive() && p.hasLineOfSight(e) && e.distanceTo(p) <= radius);
 		if (mobs.isEmpty()) return null;
 		mobs.sort((x, y) -> Double.compare(x.distanceToSqr(p), y.distanceToSqr(p)));
