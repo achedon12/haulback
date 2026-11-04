@@ -7,8 +7,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 - German and Spanish translations.
 - Recipe table covers copper blocks, mud bricks, prismarine, end stone bricks, stained glass and concrete powder.
+- Netherite ingots and blocks (ancient debris, smelting, gold) and more Nether blocks in the recipe table.
 
 ### Changed
+- Piglins are not attacked while the player wears gold armor.
 - Code comments, logs and test messages are now in English.
 
 ### Fixed
